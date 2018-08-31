@@ -60,9 +60,14 @@ class BrowseImages:
     def __init__( self , master,  increment_function, how="files", 
                 h5_fnames=None, h5_images_path=None, 
                 psana_run_number=None, psana_event_number=None ,
-                nav_frame=None, image_frame=None):
+                image_nav_frame=None, image_frame=None, image_strides = None):
 
-        self.nav_frame = nav_frame
+        if image_strides is None:
+            self.image_strides =[-100, -10,-1,1,10, 100]
+        else:
+            self.image_strides = sorted( images_strides)
+
+        self.image_nav_frame = image_nav_frame
         self.image_frame = image_frame
         self.master = master
         self.inc_func = increment_function
@@ -87,7 +92,7 @@ class BrowseImages:
         self.xl = (None, None)
         self.yl = (None, None)
        
-        self._file_nav_buttons()
+        self._image_nav_buttons()
 
     def _set_idx_fname_path(self):
         self.idx = self.indices[self.counter]
@@ -98,11 +103,12 @@ class BrowseImages:
         self.img = dset[self.idx]  
         if init:
             if self.image_frame is None:
-                im_fr= tk.Toplevel(self.master)
+                self.im_view_fr= tk.Toplevel(self.master)
+                self.im_view_fr.resizable(False,False)
             else:
-                im_fr = self.image_frame
-            self.IV = ImageViewer(im_fr, self.img, attached=False) 
-            self.IV.pack( fill=tk.BOTH, expand=tk.YES)
+                self.im_view_fr = self.image_frame
+            self.IV = ImageViewer(self.im_view_fr, self.img, attached=False) 
+            self.IV.pack( expand=tk.NO)
             self.fig = self.IV.fig
             self.ax = self.IV.ax
 
@@ -120,52 +126,39 @@ class BrowseImages:
         for p in patches:
             self.ax.add_patch( p)
 
-    def _file_nav_buttons(self):
+    def _image_nav_buttons(self):
 
-        if self.nav_frame is None:
-            nav_frame = tk.Toplevel( self.master)
+        if self.image_nav_frame is None:
+            image_nav_frame = tk.Toplevel( self.master)
         else:
-            nav_frame = self.nav_frame
+            image_nav_frame = self.image_nav_frame
         
-        button_frame0 = tk.Frame(nav_frame, bg='black', highlightbackground="#00fa32", highlightthickness=1)
+        button_frame0 = tk.Frame(image_nav_frame, bg='black', highlightbackground="#00fa32", highlightthickness=2)
         button_frame0.pack(side=tk.TOP,  **frpk)
 
-        tk.Label( button_frame0, text="File navigation", fg="#00fa32",bg='black' ,  font= 'Helvetica 24 bold')\
+        tk.Label( button_frame0, text="Image navigation", fg="#00fa32",bg='black' ,  font= 'Helvetica 14 bold')\
             .pack(side=tk.TOP, expand=tk.YES,)
     
         self.img_info_text= "File: %s; image: %d/%d"
-        self.file_info_lab = tk.Label( button_frame0, 
+        self.img_info_lab = tk.Label( button_frame0, 
             text=self.img_info_text%( self.imgs.filename_i, self.imgs.shot_i, self.imgs.N_i-1  ),
             fg="#00fa32", bg='black')
-        self.file_info_lab.pack(side=tk.TOP)
-        button_frame = tk.Frame(nav_frame, bg='black')
-        button_frame.pack(side=tk.TOP)
+        self.img_info_lab.pack(side=tk.TOP)
 
-        prev_button100 = tk.Button(button_frame0,
-                                   text='-100',
-                                   command=lambda: self._prev(100), **btnstyle)
-        prev_button100.pack(side=tk.LEFT, expand=tk.NO, **frpk)
-        prev_button10 = tk.Button(button_frame0,
-                                  text='-10',
-                                  command=lambda: self._prev(10), **btnstyle)
-        prev_button10.pack(side=tk.LEFT, expand=tk.NO, **frpk)
-        prev_button1 = tk.Button(button_frame0,
-                                 text='-1',
-                                 command=lambda: self._prev(1), **btnstyle)
-        prev_button1.pack(side=tk.LEFT, expand=tk.NO, **frpk)
+#       navigation strides
+        self.nav_buttons = {}
+        for stride in self.image_strides:
+            if stride < 0:
+                cmd = self._prev
+            else:
+                cmd = self._next
+            
+            self.nav_buttons[stride] = tk.Button(button_frame0,
+                text='%+d'%stride,
+                command=lambda increment=np.abs(stride): cmd(increment) , **btnstyle)
+            
+            self.nav_buttons[stride].pack(side=tk.LEFT, expand=tk.NO, **frpk)
 
-        next_button1 = tk.Button(button_frame0,
-                                 text='+1',
-                                 command=lambda: self._next(1), **btnstyle)
-        next_button1.pack(side=tk.LEFT, expand=tk.NO, **frpk)
-        next_button10 = tk.Button(button_frame0,
-                                  text='+10',
-                                  command=lambda: self._next(10), **btnstyle)
-        next_button10.pack(side=tk.LEFT, expand=tk.NO, **frpk)
-        next_button100 = tk.Button(button_frame0,
-                                   text='+100',
-                                   command=lambda: self._next(100), **btnstyle)
-        next_button100.pack(side=tk.LEFT, expand=tk.NO, **frpk)
 
     def _next(self, increment):
         self.counter += increment
@@ -182,7 +175,7 @@ class BrowseImages:
     
     def _update_img_info_text(self):
         text=self.img_info_text%( self.imgs.filename_i, self.imgs.shot_i, self.imgs.N_i-1  )
-        self.file_info_lab.config(text=text)
+        self.img_info_lab.config(text=text)
 
 
 

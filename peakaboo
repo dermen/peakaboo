@@ -49,8 +49,8 @@ PK_PAR =  { 'make_sparse':True,# leave true..
     'sig_G':0.,#'sig_G2':0.1,  # gaussian filter sigma (applied before local max filter, and then applied to streak detect)
     'thresh':10,  # local max with this value pixel (ADU) will be ignored
     'sz':10,  # sub image size used to  do local analysis
-    'min_snr': 18,  # min snr, rough compute, optimized visually for each experiment, use this when 'filt' is True
-    'filt': True, # this is my janky filtering I prob screwed it up in last commit, email me if bad... 
+    'min_snr': 3,  # min snr, rough compute, optimized visually for each experiment, use this when 'filt' is True
+    'filt': False, # this is my janky filtering I prob screwed it up in last commit, email me if bad... 
     'min_dist':8, # min dist between pixels 
     'r_in':None, # min res ring (only detect peaks within this radius
     'r_out':None, 
@@ -67,7 +67,7 @@ PK_PAR =  { 'make_sparse':True,# leave true..
 ##############
 
 
-class ModelApp(tk.Frame):
+class Peakaboo(tk.Frame):
     
     def __init__(self, master, cxi_fname, image_path, circ_color='Limegreen',
                     *args, **kwargs):
@@ -97,14 +97,14 @@ class ModelApp(tk.Frame):
         self.nb = ttk.Notebook(self.master)#, style="TNotebook")
 
 #       image browser
-        self.nav_frame = tk.Frame( self.nb, bg="black", highlightbackground="#00fa32", highlightthickness=2)
+        self.nav_frame = tk.Frame( self.nb, bg="black", highlightbackground="#00fa32", highlightthickness=1)
         self.nav_frame.pack( side=tk.TOP, expand=tk.NO)        
         self.browser = imbrowse.BrowseImages( self.master, 
             increment_function=self._update_browser, 
             how='files', 
             h5_fnames =cxi_fname, 
             h5_images_path=image_path,
-            nav_frame=self.nav_frame,
+            image_nav_frame=self.nav_frame,
             image_frame=None)
 
         
@@ -114,13 +114,15 @@ class ModelApp(tk.Frame):
         self._make_peak_detection_frame()
         self._make_mask_and_geometry_frame()
         self._make_peakaboo_inputs()
-        self._make_disable_detection_checkbutton()
+        #self._make_disable_detection_checkbutton()
         self._make_peakaboo_button_frame()
+        
         self._make_peakaboo_button()
+        self._make_peakaboo_hidepeaks_button()
         self._make_peakaboo_parameter_save_load_buttons()
         self.nb.add( self.peak_detection_frame, text="Peaks")
         self.nb.add( self.mask_geom_frame, text="Mask/Geom")
-        self.nb.add( self.nav_frame, text="File")
+        self.nb.add( self.nav_frame, text="ImgNav")
         
         self._mask_loader()
         self._mask_dilation()
@@ -128,12 +130,13 @@ class ModelApp(tk.Frame):
         self.CENT = (self.browser.img.shape[1]/2., self.browser.img.shape[0]/2.)
         self._set_R()
         self._detector_center_widgets()
-
         self._set_info_panel()
         
         self.radpro_frame = tk.Frame( self.mask_geom_frame, bg='black', padx=5, pady=5,
             highlightcolor="#00fa32", highlightthickness=1, highlightbackground="#00fa32")
+        
         self.radpro_frame.pack(side=tk.TOP, expand=tk.YES)
+        
         tk.Label(self.radpro_frame, text="Radial operations",fg="#00fa32", bg='black' , font= 'Helvetica 14 bold')\
             .pack(side=tk.TOP)
 
@@ -146,15 +149,20 @@ class ModelApp(tk.Frame):
 
         self._pack_master()
 
+        self._set_window_titles()
+
     def _pack_master(self):
         self.nb.pack( side=tk.TOP, expand=tk.YES)
-        self.info_frame.pack( side=tk.TOP, expand=tk.NO)
+        self.info_frame.pack( side=tk.TOP, expand=tk.YES, fill=tk.X)
 
 
+    def _set_window_titles(self):
+        self.browser.IV.image_frame.title("Peakaboo image")
+        self.browser.im_view_fr.title("Peakaboo image range slider")
+    
     def _set_info_frame(self):
         self.info_frame = tk.Frame( self.master, bg="black")
-        #self.info_frame.pack( side=tk.TOP, expand=tk.YES, fill=tk.X)
-
+    
     def _set_infos(self):
         self._hover_message( self.browser.IV.range_slider.entry_maxval,  "maximum color scale" )
         self._hover_message( self.browser.IV.range_slider.entry_minval,  "minimum color scale" )
@@ -171,13 +179,11 @@ class ModelApp(tk.Frame):
     
     def _make_tooltip_frame(self):
         
-        self.tooltip_fr = tk.Frame( self.info_frame, bg='black') #, width=200, height=200 )
-        self.tooltip_fr.pack( side=tk.LEFT, expand=tk.NO,)
-        tk.Label(self.tooltip_fr, text='Widget info', fg='#00fa32', bg='black', font= 'Helvetica 12 bold' )\
-            .pack(side=tk.TOP)
-        self.tooltip_message = tk.Label( self.tooltip_fr, fg="#00fa32", bg="black", text="Tooltips display here")
-        self.tooltip_message.pack(side=tk.TOP,expand=tk.YES, fill=tk.BOTH )
-
+        self.tooltip_fr = tk.Frame( self.info_frame, bg='black', bd=10) 
+        self.tooltip_fr.grid( row=0, column=0, sticky=tk.W)
+        
+        self.tooltip_message = tk.Label( self.tooltip_fr, fg="#00fa32", bg="black", text="Widget info displays here")
+        self.tooltip_message.pack(side=tk.TOP , expand=tk.NO)
 
 
     def _make_disable_detection_checkbutton(self):
@@ -186,6 +192,7 @@ class ModelApp(tk.Frame):
             self.peak_detection_frame, 
             variable=self.detect_peaks_var, 
             command=self._disable_peak_detection, bg='black')
+        
         self.detect_peaks_label = tk.Label(
             self.peak_detection_frame,  
             bg='black', fg='#00fa32', text="Do not detect peaks")
@@ -196,7 +203,11 @@ class ModelApp(tk.Frame):
     def _disable_peak_detection(self):
         self.peakaboo = False
         self._update_browser()
-        
+    
+    def _hide_peakaboo_peaks(self):
+        self.peakaboo=False
+        self._update_browser()
+
     def _radial_bins_from_entry(self):
        
         radial_bin_str = self.radial_bin_var.get()
@@ -313,7 +324,8 @@ class ModelApp(tk.Frame):
     def _set_info_panel(self):
         
         fr = tk.Frame(self.info_frame, bg="black") # highlightbackground="#00fa32")
-        fr.pack(side=tk.RIGHT,expand=tk.NO, padx=10)
+        self.info_frame.grid_columnconfigure(1,weight=1)
+        fr.grid(row=0, column=2, sticky=tk.E)
         
         color={"foreground":"#00fa32", "background":"black"}
         font = 'Helvetica 10'
@@ -515,6 +527,7 @@ class ModelApp(tk.Frame):
         fr.pack(side=tk.TOP, expand=tk.YES, fill=tk.BOTH)
         
         self.pk_par_vars ={}
+        self.all_number_entry_widgets = {}
         for row,e in enumerate(self.number_entries.keys()):
             
             self.pk_par_vars[e] = tk.StringVar()
@@ -522,23 +535,30 @@ class ModelApp(tk.Frame):
             entry.grid( row=row, column=0,pady=4) 
             self.pk_par_vars[e].set( str(PK_PAR[e]))
             
-            entry.config(bg="black", fg="#00fa32",  insertbackground="#00fa32")
+            entry.config(bg="black", fg="#00fa32",selectforeground="black", selectbackground="#00fa32",  
+                highlightcolor="#00fa32", insertbackground="#00fa32")
             tk.Label(fr, text=self.number_info[e], justify=tk.LEFT, anchor=tk.W, \
                 highlightbackground="#00fa32", highlightthickness=0,pady=2, **color).grid(row=row, column=1, sticky=tk.W)
     
+            self.all_number_entry_widgets[e] = entry
+
     def make_bool_entries(self):
-        hlcolors={"highlightbackground":"#00fa32", "highlightthickness":2}
+        hlcolors={"highlightbackground":"#00fa32", "highlightthickness":1}
         colors={"bg":"black", "fg":"#00fa32"}
-        fr = tk.Frame( self.peak_detection_frame, **hlcolors )
+        fr = tk.Frame( self.peak_detection_frame, bg="black", **hlcolors )
         fr.pack(side=tk.TOP, expand=tk.YES, fill=tk.BOTH)
         
         self.bool_checkbuttons = {}
         for row,e in enumerate( self.bool_entries):
 
             self.pk_par_vars[e] = tk.IntVar()
-            c = tk.Checkbutton(fr, text=self.bool_info[e], variable=self.pk_par_vars[e],
-                                anchor="w", justify=tk.LEFT, command=self.bool_cmd[e], )
-            c.pack(side=tk.TOP)
+            sub_fr = tk.Frame( fr, bg="black")
+            sub_fr.grid(row=row,column=0, sticky=tk.W, padx=10)
+             
+            c = tk.Checkbutton(sub_fr, variable=self.pk_par_vars[e],
+                                anchor="w", justify=tk.LEFT, command=self.bool_cmd[e], bg="black")
+            c.pack(side=tk.LEFT)
+            tk.Label(sub_fr, text=self.bool_info[e], bg="black", fg="#00fa32").pack(side=tk.LEFT)
             self.bool_checkbuttons[e] = c
             self.pk_par_vars[e].set( int(PK_PAR[e]) ) 
             
@@ -569,20 +589,59 @@ class ModelApp(tk.Frame):
        
         #str_entries = {"mask":str, "R":str}
         self.bool_entries = {"filt":bool, "run_rad_med":bool, "peak_COM":bool}
-        self.bool_info={"filt":"Filter based on local SNR", 
+        self.bool_info={"filt":"Minimum SNR filter", 
                         "run_rad_med":"Use radial median subtraction",
-                        "peak_COM":"Detect peak center-of-intensity (instead of peak maximum)"} 
-        
+                        "peak_COM":"Detect peak center-of-intensity"} 
         
         def check_run_rad_med():
             if self.R is None:
                 self.launch_warning("Define or load a radial pixel map first!")
                 self.pk_par_vars["run_rad_med"].set(0)
                 return
-            
+            if not self.radial_bins:
+                self.launch_warning("Define radial bins (Mask/Geom tab) or this is meaningless")
+                self.pk_par_vars["run_rad_med"].set(0)
+                return
+
+        def disable_snr_buttons():
+            if self.pk_par_vars["filt"].get()==0:
+                self.all_number_entry_widgets["min_snr"].config(state=tk.DISABLED)
+                self.all_number_entry_widgets["min_conn"].config(state=tk.DISABLED)
+                self.all_number_entry_widgets["max_conn"].config(state=tk.DISABLED)
+                self.all_number_entry_widgets["sz"].config(state=tk.DISABLED)
+            else:
+                self.all_number_entry_widgets["min_snr"].config(state=tk.NORMAL)
+                self.all_number_entry_widgets["min_conn"].config(state=tk.NORMAL)
+                self.all_number_entry_widgets["max_conn"].config(state=tk.NORMAL)
+                self.all_number_entry_widgets["sz"].config(state=tk.NORMAL)
+        
+        bool_cmd = {"run_rad_med": check_run_rad_med, "filt": disable_snr_buttons}
+
+        self.bool_cmd = dict([(k,bool_cmd[k]) if k in bool_cmd else (k,lambda:None) 
+            for k in self.bool_info.keys() ])
+
+        tk.Label(self.peak_detection_frame, text="Peak finding parameters", bg='black', fg="#00fa32", \
+            highlightbackground="#00fa32",  font= 'Helvetica 14 bold', highlightthickness=0).pack(side=tk.TOP,)
+        
+        self.make_number_entries()
+        self.make_bool_entries()
+        
+        if not PK_PAR["filt"]:
+            disable_snr_buttons()
+
+        self.entry_type ={k:v for d in [self.number_entries, self.bool_entries] 
+                            for k, v in d.items()} 
+        
+       
+    def _make_peakaboo_button_frame(self):
+        self.peakaboo_button_frame = tk.Frame( self.peak_detection_frame, 
+            bg='black', highlightthickness=1,bd=7, highlightbackground="#00fa32" )
+        self.peakaboo_button_frame.pack(side=tk.TOP, expand=tk.YES, fill=tk.BOTH)
+    
+
         bool_cmd = {"run_rad_med": check_run_rad_med}
 
-        self.bool_cmd = dict([ (k,bool_cmd[k]) if k in bool_cmd else (k,lambda x:None) 
+        self.bool_cmd = dict([(k,bool_cmd[k]) if k in bool_cmd else (k,lambda x:None) 
             for k in self.bool_info.keys() ])
 
         tk.Label(self.peak_detection_frame, text="Peak finding parameters", bg='black', fg="#00fa32", \
@@ -595,7 +654,7 @@ class ModelApp(tk.Frame):
        
     def _make_peakaboo_button_frame(self):
         self.peakaboo_button_frame = tk.Frame( self.peak_detection_frame, 
-            bg='black', highlightthickness=2, highlightbackground="#00fa32" )
+            bg='black', highlightthickness=1,bd=7, highlightbackground="#00fa32" )
         self.peakaboo_button_frame.pack(side=tk.TOP, expand=tk.YES, fill=tk.BOTH)
     
     def _make_peakaboo_button(self):
@@ -603,24 +662,32 @@ class ModelApp(tk.Frame):
         self.peakaboo_button = tk.Button( self.peakaboo_button_frame,  
             text="Peakaboo!", 
             command=self._on_peakaboo, 
-            highlightthickness=2, 
+            highlightthickness=1, 
             highlightbackground='black')
         
 #       just trying this out for fun
-        self.peakaboo_button.pack(side=tk.LEFT)
+        self.peakaboo_button.pack(side=tk.LEFT, expand=tk.YES, fill=tk.X)
         self._hover_message( self.peakaboo_button, "Peakaboo: Click to detect peaks")
         #self.peakaboo_button.bind("<Enter>", lambda event,x="Peakaboo: Cick to detect peaks":self._on_enter( event,message=x))
         #self.peakaboo_button.bind("<Leave>", self._on_leave)
 
     def _make_peakaboo_parameter_save_load_buttons(self):
-        button_style = {"highlightthickness":2, "highlightbackground":"black"}
+        button_style = {"highlightthickness":1, "highlightbackground":"black"}
         save_param_button = tk.Button( self.peakaboo_button_frame,  text="Save", command=self._save_peak_params, **button_style)
-        save_param_button.pack(side=tk.LEFT)
+        save_param_button.pack(side=tk.LEFT, fill=tk.X, expand=tk.YES)
         load_param_button = tk.Button( self.peakaboo_button_frame ,text="Load", command=self._load_peak_params, **button_style)
-        load_param_button.pack(side=tk.LEFT)
+        load_param_button.pack(side=tk.LEFT, fill=tk.X, expand=tk.YES)
 
         self._hover_message(save_param_button, "Save peak parameters to hdf5")
         self._hover_message(load_param_button, "Load peak parameters from hdf5")
+
+    def _make_peakaboo_hidepeaks_button(self):
+        button_style = {"highlightthickness":1, "highlightbackground":"black"}
+        hide_peaks_button = tk.Button( self.peakaboo_button_frame, 
+            text="Hide", command=self._hide_peakaboo_peaks, **button_style)
+        hide_peaks_button.pack(side=tk.LEFT, expand=tk.YES, fill=tk.X)
+
+        self._hover_message( hide_peaks_button, "Stop detecting peaks")
 
     def _hover_message(self, widget, message):
         widget.bind( "<Enter>", lambda event,x=message:self._on_enter(event, message=x))
@@ -628,14 +695,14 @@ class ModelApp(tk.Frame):
 
     def _on_peakaboo( self):
         self.peakaboo=True
-        self.detect_peaks_var.set(0)
+        #self.detect_peaks_var.set(0)
         self._update_browser()
 
 #   tool tip message bindings, can be used for any widgets... 
     def _on_enter( self, event, message=""):
         self.tooltip_message.config(text=message)
     
-    def _on_leave( self, event, message="Tooltip info displays here"):
+    def _on_leave( self, event, message="Widget info displays here"):
         self.tooltip_message.config(text=message)
 
     def _set_found_circs(self):
@@ -735,6 +802,7 @@ class ModelApp(tk.Frame):
         PK_PAR["mask"] = self.MASK
         PK_PAR["R"] = self.R
         PK_PAR["cent"] = self.CENT 
+        print (PK_PAR)
         if PK_PAR["mask"] is not None:
             mask = self.mask_join( PK_PAR["mask"], self.MASK_UPDATE )*self.MASK_BEAM
             self.found_centers,_ = peaks.pk_pos(  self.browser.img*mask, **PK_PAR )
@@ -799,13 +867,11 @@ if __name__ == '__main__':
     
     root = tk.Tk()
     root.title("Peakaboo")
-    frame = ModelApp(
+    frame = Peakaboo(
         root,
         args.fname,
         args.images_path,
         circ_color=args.circ_color,
-        #height=900,
-        #width=200,
         bg='black')
     frame.pack( side=tk.TOP, expand=tk.YES)
     root.mainloop()

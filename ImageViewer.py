@@ -128,17 +128,11 @@ class ImageViewer(tk.Frame):
         
         tk.Frame.__init__(self, master,  background='black') #*args, **kwargs)
         self.master = master
+        
         self.attached=attached
         
         self.master.config(bg="black")
-        self.image_frame = tk.Frame( self.master, bg="black" )
-        self.image_frame.pack( side=tk.BOTTOM, expand=tk.YES)
         
-        self.slider_frame = tk.Frame(self.master,bg='black', bd=0,)
-        self.slider_frame.pack(side=tk.BOTTOM, padx=0, pady=0)
-        
-        self.range_slider_frame = tk.Frame( self.slider_frame , bg='black', bd=0,)
-        self.range_slider_frame.pack( side=tk.TOP, expand=tk.NO,  padx=0, pady=0)
         self.vmin = self.vmax = None
 
         #load the image
@@ -162,15 +156,14 @@ class ImageViewer(tk.Frame):
         self.master.after( 500, self._update_clim )    
 
     def _add_range_slider(self):
-        self.range_slider = RangeSlider( self.range_slider_frame, range_slider_len=400, 
+        self.range_slider = RangeSlider( self.master, range_slider_len=400, 
             minval=-100, maxval=1000, bd=0, padx=0, pady=0, background='black')
-        self.range_slider.pack(side=tk.TOP, fill=tk.X,  expand=tk.YES)
+        self.range_slider.pack(side=tk.TOP,  expand=tk.NO)
         
     def _create_figure(self):
         self.fig = plt.figure(figsize=(6,6))
         self.ax = self.fig.add_axes([0, 0, 1, 1])
         self.ax.set_facecolor("black") 
-        #self.ax.set_aspect('equal')
         self.fig.patch.set_visible(False)
         self.ax.axis('off')
     
@@ -181,27 +174,27 @@ class ImageViewer(tk.Frame):
             vmax=self.vmax, 
             cmap='gist_gray')
         self.vmin,self.vmax = self._im.get_clim()
-        #self.cbar = plt.colorbar( self._im)
-        #self.ax.format_coord = Formatter(self._im)
 
     def _setup_canvas(self):
         if not self.attached:
-            image_frame= tk.Toplevel(self.master)
+            self.image_frame= tk.Toplevel(self.master)
         else:
-            image_frame = self.image_frame
+            self.image_frame = tk.Frame( self.master, bg="black" )
+            self.image_frame.pack( side=tk.TOP, expand=tk.YES)
         
-        self.disp_frame = tk.Frame(image_frame, bg="black")
+        self.disp_frame = tk.Frame(self.image_frame, bg="black")
         self.disp_frame.pack(side=tk.TOP, expand=tk.YES, fill=tk.BOTH)
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.disp_frame) 
         self.canvas.get_tk_widget().configure(bg='black', highlightbackgroun="black")
         self.canvas.get_tk_widget().pack(side=tk.TOP, 
             expand=tk.YES, fill=tk.BOTH)
         
+#       NOTE: https://github.com/matplotlib/matplotlib/issues/6781 - dissapears on resize, consider fix 
         self.toolbar = NavigationToolbar2Tk(self.canvas, 
             self.disp_frame)
         self.toolbar.update()
         self.canvas._tkcanvas.pack(side=tk.TOP, 
-            expand=tk.YES, fill=tk.X, **frpk)
+            expand=tk.YES, fill=tk.BOTH)
 
         self.canvas.draw()
         

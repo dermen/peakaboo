@@ -13,9 +13,7 @@ frpk = {'padx':5, 'pady':5}
 class RangeSlider(tk.Frame):
     '''
     range slider 
-    Ideas on moving objects in a canvas borrowed from BOakley, 
-    aka tkinter god
-        https://stackoverflow.com/a/6789351/2077270
+    Ideas: https://stackoverflow.com/a/6789351/2077270
     '''
     def __init__(self, master, color='#00fa32', 
             range_slider_len=400, 
@@ -92,10 +90,10 @@ class RangeSlider(tk.Frame):
         self._pack_widgets()
 
     def _pack_widgets(self):
-        self.entry_minval.pack(side=tk.LEFT, expand=tk.YES)
-        self.canvas.pack(expand=tk.YES, side=tk.LEFT,)
-        self.canvas_frame.pack(side=tk.LEFT,expand=tk.YES, padx=10)
-        self.entry_maxval.pack(side=tk.LEFT, expand=tk.YES)
+        self.entry_minval.pack(side=tk.LEFT,)# expand=tk.YES)
+        self.canvas_frame.pack(side=tk.LEFT,expand=tk.NO, padx=10)
+        self.canvas.pack(expand=tk.NO, fill=tk.BOTH,side=tk.LEFT,)
+        self.entry_maxval.pack(side=tk.LEFT, expand=tk.NO)
 
     def _create_min_max_entry(self):
         self.entry_minval = tk.Entry(self.master, bd=2, 

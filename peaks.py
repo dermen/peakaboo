@@ -74,9 +74,12 @@ def detect_peaks(image):
 
     return detected_peaks
 
-def rad_med(I,R, rbins, thresh, mask_val=0):
+def rad_med(I, R, rbins, thresh, mask_val=0):
+    
     I1 = I.copy().ravel()
     R1 = R.ravel()
+
+    R1[ I1==mask_val] = 0
 
     bin_assign = np.digitize( R1, rbins)
     
@@ -87,6 +90,7 @@ def rad_med(I,R, rbins, thresh, mask_val=0):
             continue
         inds = bin_assign==b
         pts = I1[inds]
+        
         med = np.median( pts )
         diffs = np.sqrt( (pts-med)**2 )
         med_diff = np.median( diffs)
@@ -102,7 +106,7 @@ def pk_pos( img_, make_sparse=True, nsigs=7, sig_G=None, thresh=1, sz=4, min_snr
 
     sz = int(sz)
     img = img_.copy()
-    #img[ img <  thresh] = 0
+    
     if run_rad_med and rbins is not None:
         img = rad_med( img, R, rbins, nsigs)
     else:
@@ -112,8 +116,9 @@ def pk_pos( img_, make_sparse=True, nsigs=7, sig_G=None, thresh=1, sz=4, min_snr
     
     if sig_G is not None:
         img = gaussian_filter( img, sig_G)
+    
     lab_img, nlab = measurements.label(detect_peaks(img))
-    locs = measurements.find_objects(lab_img)
+    #locs = measurements.find_objects(lab_img)
     
     if peak_COM:
         pos = measurements.center_of_mass( img, lab_img , np.arange( nlab)+1 )
@@ -181,10 +186,13 @@ def pk_pos( img_, make_sparse=True, nsigs=7, sig_G=None, thresh=1, sz=4, min_snr
         for i_s, s in enumerate(SubImg.sub_imgs):
             if not s.img.size: # NOTE: do I still need this??
                 continue
+            
+            
             nconn = streaks.get_nconn_snr_img(s,min_snr)
-            #SubProc = streak_peak.SubImageProcess(s)
+            
+            if nconn < 1:
+                continue
 
-            #nconn = SubProc.get_nconnect_cent(zscore_sig=min_snr)
             if nconn < min_conn:
                 continue
             if nconn > max_conn:
