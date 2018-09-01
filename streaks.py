@@ -23,15 +23,21 @@ except ImportError:
     print("Does not have astride installed.")
     has_astride=False
 
-
 class SubImageProcess:
+    
     def __init__( self, sub_img):
         self.sub_img = sub_img
         self.img = self.sub_img.img
+        self.img_1d = self.img.ravel()
+        self.mask = self.sub_img.pixmask
     
     def _get_BG_pixels(self, zscore):
-        outs = is_outlier( self.img.ravel(), zscore)
+        
+        outs = is_outlier( self.img_1d, zscore)
         outs = outs.reshape ( self.img.shape)
+        
+        outs = np.logical_or( outs, ~self.mask)
+
         self.BG_mask = ~outs
         BG = (~outs) * self.img
         self.BG_pixels = BG
@@ -39,12 +45,7 @@ class SubImageProcess:
         self.bg_value = self.img[~outs].mean()
         self.sigma_value = self.img[~outs].std()
 
-        #return self.BG_pixels
-        
     def set_tilt_plane(self, zscore) :
-        #outs = is_outlier( self.img.ravel(), zscore)
-        #outs = outs.reshape ( self.img.shape)
-        #BG = (~outs) * self.img
         self._get_BG_pixels(zscore)
         
         Y,X = np.indices(self.img.shape)
@@ -62,8 +63,9 @@ class SubImageProcess:
         return self.img - self.tilt_plane
         
     def get_residual_outlier_img(self, zscore_bg, zscore_sig):
-        sub_img = self.get_subtracted_img( zscore_bg)
-        outs = is_outlier(sub_img.ravel(), zscore_sig)
+        residual_img = self.get_subtracted_img( zscore_bg)
+        residual_img_1d = sub_img.ravel()
+        outs = is_outlier(residual_img_1d, zscore_sig)
         outs = outs.reshape( self.img.shape)
         return outs
 
@@ -75,7 +77,6 @@ class SubImageProcess:
             return 0
         nconn = np.sum( lab == lab[self.sub_img.rel_peak]  )
         return nconn
-
 
 def get_nconn_snr_img( sub_img, min_snr, zscore_bg=2, 
         structure=None):
