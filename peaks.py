@@ -113,18 +113,19 @@ class PeakabooImage:
         self.mask_1d = self.mask.ravel()
 
     def _set_up_sectioning(self, how=None):
+        assert( how in [None, "radial", "fromfile"])
         if how is None:
             self._no_sectioning()
-            return
-        else:
-            assert( how in ["radial", "fromfile"])
-         
-        if how=="radial":
+        elif how=="radial":
             self._radial_sectioning()
-  
         elif how=="fromfile":
             self._fromfile_sectioning()
-    
+   
+        self.how_to_section = how
+
+    def reset_sectioning(self):
+        self._set_up_sectioning( how=self.how_to_section)
+
     def _no_sectioning(self):
         """
         Disables image sectionining such that when peaks are computed

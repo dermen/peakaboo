@@ -81,7 +81,7 @@ class Peakaboo(tk.Frame):
         self.show_radial_bins = False
         self.radial_bin_circles = []
         self.radial_bins = []
-        self.MASK = None
+        self.BASE_MASK = None
         self.viewing_radpro=False
         self.showing_mask=False
         self.circ_color=circ_color
@@ -342,8 +342,8 @@ class Peakaboo(tk.Frame):
         tk.Label(entry_frame, text=some_text, justify=tk.LEFT, fg="#00fa32", bg='black')#.pack(side=tk.TOP) 
         
         self.radial_bin_var = tk.StringVar()
-        tk.Entry(entry_frame, textvariable=self.radial_bin_var, fg="#00fa32", bg='black', insertbackground="#00fa32" )\
-            .pack( side=tk.TOP, pady=10, padx=10, fill=tk.X)
+        tk.Entry(entry_frame, textvariable=self.radial_bin_var, fg="#00fa32", bg='black',selectforeground="black",\
+            selectbackground="#00fa32", insertbackground="#00fa32" ).pack( side=tk.TOP, pady=10, padx=10, fill=tk.X)
         
         button_frame = tk.Frame( self.radsectioning_frame, bg="black", bd=5)
         button_frame.pack( side=tk.TOP, expand=tk.YES, fill=tk.BOTH)
@@ -393,7 +393,7 @@ class Peakaboo(tk.Frame):
             self.radpro_maker = RadialProfile( 
                 center=self.CENT,
                 img_shape = self.browser.img.shape, 
-                mask=self.MASK, 
+                mask=PK_PAR["mask"], 
                 minlength=  10+ int( np.sqrt( self.browser.img.shape[0]**2 + self.browser.img.shape[1]**2)) ) 
             
             self.radpro_xvals = np.arange( self.radpro_maker.minlength )
@@ -465,6 +465,7 @@ class Peakaboo(tk.Frame):
     
         self._set_R()
         self._reset_radial_bins()
+        self._update_beam_mask( self.beam_mask_scale.get())
 
     def _sel_files(self):
         file_opt = {'filetypes': [],
@@ -488,13 +489,16 @@ class Peakaboo(tk.Frame):
         return npy_file, NPY 
     
     def _show_mask( self):
-        if self.MASK is not None:
-            self.mask = self.mask_join( self.MASK, self.MASK_SCALED) * self.MASK_BEAM
-            self.browser.IV.set_data( self.browser.img * self.mask)
-            self.browser.IV.fig.canvas.draw()
-            self.showing_mask=True
+        if self.BASE_MASK is not None:
+            mask = self.mask_join( self.BASE_MASK, self.MASK_SCALED) * self.MASK_BEAM
         else:
-            self.launch_warning("Mask is set to None! Try loading a numpy array")
+            mask = self.MASK_BEAM
+        
+        self.browser.IV.set_data( self.browser.img * mask)
+        self.browser.IV.fig.canvas.draw()
+        self.showing_mask=True
+        #else:
+        #    self.launch_warning("Mask is set to None! Try loading a numpy array")
     
     def _hide_mask( self):
         self.browser.IV.set_data( self.browser.img )
@@ -502,7 +506,7 @@ class Peakaboo(tk.Frame):
         self.showing_mask=False
 
     def _load_mask_from_file(self):
-        self.mask_file, self.MASK = self._load_numpy_binary("MASK")
+        self.mask_file, self.BASE_MASK = self._load_numpy_binary("MASK")
         
         if has_loki: 
             self._set_radpro_maker()
@@ -513,13 +517,13 @@ class Peakaboo(tk.Frame):
         self._set_new_mask()
 
     def _save_mask(self):
-        if self.MASK is None and self.MASK_BEAM ==1:
+        if self.BASE_MASK is None and self.MASK_BEAM ==1:
             self.launch_warning("No mask loaded")
             return
         fname = tkFileDialog.asksaveasfilename(defaultextension=".npy")
         if fname=="":
             return
-        np.save( fname, self.mask_join( self.MASK, self.MASK_SCALED) *self.MASK_BEAM )
+        np.save( fname, self.mask_join( self.BASE_MASK, self.MASK_SCALED) *self.MASK_BEAM )
         print("Saved %s"%fname)
 
     def _set_R(self):
@@ -568,22 +572,26 @@ class Peakaboo(tk.Frame):
 
 
     def _set_new_mask(self):
-        if self.MASK is not None:
-            new_mask = self.mask_join( self.MASK, self.MASK_SCALED )*self.MASK_BEAM
-            PK_PAR["mask"] =  new_mask
-            self.PK_IMG.set_mask( new_mask)
+        if self.BASE_MASK is not None:
+            new_mask = self.mask_join( self.BASE_MASK, self.MASK_SCALED )*self.MASK_BEAM
         else:
-            self.launch_warning("Not base mask set.. Load numpy array mask")
+            new_mask = self.MASK_BEAM
+
+        PK_PAR["mask"] = new_mask
+        self.PK_IMG.set_mask( new_mask)
+        self.PK_IMG.reset_sectioning()
+        #else:
+        #    self.launch_warning("No base mask set.. Load numpy array mask")
 
     def _update_mask(self, scale_factor):
         scale_factor = int(scale_factor)
-        if self.MASK is not None:
+        if self.BASE_MASK is not None:
             lognot = np.logical_not
             if scale_factor > 0:
-                self.MASK_SCALED = lognot(binary_dilation( lognot(self.MASK), iterations=scale_factor)) 
+                self.MASK_SCALED = lognot(binary_dilation( lognot(self.BASE_MASK), iterations=scale_factor)) 
                 self.mask_join = np.logical_and
             elif scale_factor < 0:
-                self.MASK_SCALED = lognot(binary_erosion( lognot(self.MASK), iterations=abs(scale_factor))) 
+                self.MASK_SCALED = lognot(binary_erosion( lognot(self.BASE_MASK), iterations=abs(scale_factor))) 
                 self.mask_join = np.logical_or
             else:
                 self.MASK_SCALED=1
@@ -873,9 +881,9 @@ class Peakaboo(tk.Frame):
                 PK_PAR[name] = data
         
         self.CENT = PK_PAR['cent']
-        self.MASK = PK_PAR['mask']
-        if self.MASK is not None:
-            self.MASK = self.MASK.astype(bool)
+        self.BASE_MASK = PK_PAR['mask']
+        if self.BASE_MASK is not None:
+            self.BASE_MASK = self.BASE_MASK.astype(bool)
         self.R = PK_PAR['R']
         
         self.centX_var.set( self.CENT[0])
@@ -944,13 +952,11 @@ class Peakaboo(tk.Frame):
             self._detect_peaks() # this sets found circs 
             self.browser._add_patches( patches=self.found_circs)
          
-        if self.showing_mask:
-            self.browser.IV.set_data( self.browser.img*self.mask)
-        else:
-            self.browser.IV.set_data( self.browser.img)
         self.browser._set_xy_limits()
+        
         if self.showing_mask:
             self._show_mask()
+        
         self.browser.IV.fig.canvas.draw()
 
 
