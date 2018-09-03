@@ -14,6 +14,7 @@ except ImportError:
     from tkinter import filedialog as tkFileDialog
     from tkinter import ttk
 
+from scipy.ndimage.filters import gaussian_filter
 from scipy.ndimage.morphology import binary_dilation 
 from scipy.ndimage.morphology import binary_erosion
 import matplotlib as mpl
@@ -26,8 +27,6 @@ import os
 import pandas
 import h5py
 import numpy as np
-import matplotlib as mpl
-mpl.use('TkAgg')
 
 import peaks
 
@@ -82,12 +81,12 @@ class Peakaboo(tk.Frame):
         self.show_radial_bins = False
         self.radial_bin_circles = []
         self.radial_bins = []
-        self.MASK=None
+        self.MASK = None
         self.viewing_radpro=False
         self.showing_mask=False
         self.circ_color=circ_color
         self.Num_peaks = 0
-        self.MASK_UPDATE = 1
+        self.MASK_SCALED = 1
         self.MASK_BEAM = 1
         self.found_circs = []
         self.peakaboo=False
@@ -107,51 +106,115 @@ class Peakaboo(tk.Frame):
             image_nav_frame=self.nav_frame,
             image_frame=None)
 
-        
+#       set peakaboo image class
+        self._setup_peakaboo_image_class()
+
         self._set_info_frame()
         self._make_tooltip_frame()
         
         self._make_peak_detection_frame()
         self._make_mask_and_geometry_frame()
         self._make_peakaboo_inputs()
-        #self._make_disable_detection_checkbutton()
         self._make_peakaboo_button_frame()
         
         self._make_peakaboo_button()
         self._make_peakaboo_hidepeaks_button()
         self._make_peakaboo_parameter_save_load_buttons()
+
+#       sectionining widgets
+        self._make_sectioning_frame()
+
+#       filters
+        self._make_imageops_frame()
+        self._make_imageops_frame_widgets()
+
         self.nb.add( self.peak_detection_frame, text="Peaks")
-        self.nb.add( self.mask_geom_frame, text="Mask/Geom")
-        self.nb.add( self.nav_frame, text="ImgNav")
-        
+        self.nb.add( self.mask_frame, text="Mask")
+        self.nb.add( self.geom_frame, text="Geom")
+        self.nb.add( self.sectioning_frame, text="Sectioning")
+        self.nb.add( self.nav_frame, text="Navigate")
+        self.nb.add( self.imageops_frame, text="Image")
+
+#       mask stuff
         self._mask_loader()
-        self._mask_dilation()
+        self._make_mask_dilation_widgets()
         
+#       center / geometry stuff
         self.CENT = (self.browser.img.shape[1]/2., self.browser.img.shape[0]/2.)
         self._set_R()
         self._detector_center_widgets()
         self._set_info_panel()
-        
-        self.radpro_frame = tk.Frame( self.mask_geom_frame, bg='black', padx=5, pady=5,
-            highlightcolor="#00fa32", highlightthickness=1, highlightbackground="#00fa32")
-        
-        self.radpro_frame.pack(side=tk.TOP, expand=tk.YES)
-        
-        tk.Label(self.radpro_frame, text="Radial operations",fg="#00fa32", bg='black' , font= 'Helvetica 14 bold')\
-            .pack(side=tk.TOP)
+      
 
+#       radial stuff
+        self._make_radial_sectioning_frame()
         self._set_radpro_maker()
-        self._make_radpro_button()
-
         self._set_radial_bin_widgets()
-       
-        self._set_infos()
-
-        self._pack_master()
-
+      
+        self._set_hover_messages()
+        
+        self._pack_the_master_frame()
         self._set_window_titles()
 
-    def _pack_master(self):
+    def _make_sectioning_frame(self):
+        self.sectioning_frame = tk.Frame( self.nb,
+            bg="black",bd=10, 
+            highlightbackground="#00fa32", 
+            highlightthickness=1)
+        
+        self.sectioning_frame.pack( side=tk.TOP)
+    
+    def _make_imageops_frame(self):
+        self.imageops_frame = tk.Frame( self.nb,
+            bg="black", 
+            bd=10,
+            highlightbackground="#00fa32", 
+            highlightthickness=1)
+        
+        self.imageops_frame.pack( side=tk.TOP)
+
+    def _make_imageops_frame_widgets(self):
+        #self._make_gauss_blur_toggle_widget()
+        self._make_filters_frame()
+        self._make_gaussian_filter_scale()
+        self._make_radpro_button()
+
+    def _make_filters_frame(self):
+        self.filters_frame = tk.Frame( self.imageops_frame, bg="black",  highlightbackground="#00fa32", 
+                        highlightthickness=2, )
+        self.filters_frame.pack(side=tk.TOP, fill=tk.X)
+        
+
+    def _make_gauss_blur_toggle_widget(self):
+        show_gauss_blur_frame = tk.Frame( self.filters_frame, bg="black")
+        show_gauss_blur_frame.pack(side=tk.TOP)
+        
+        tk.Label(show_gauss_blur_frame, text="Display Gaussian blur", fg="#00fa32", bg="black").pack(side=tk.LEFT)
+        
+        self.show_gauss_blur_var = tk.IntVar()
+        
+        cb = tk.Checkbutton( show_gauss_blur_frame, variable=self.show_gauss_blur_var,
+            command=self._show_gauss_blur, bg="black")
+        cb.pack( side=tk.LEFT)
+
+    def _show_gauss_blur(self):
+        if self.show_gauss_blur_var.get()==1:
+            self.browser.IV.set_data( self.PK_IMG.img)
+        else:
+            self.browser.IV.set_data( self.browser.img)
+
+    def _setup_peakaboo_image_class(self):
+        self.PK_IMG = peaks.PeakabooImage( PK_PAR, self.browser.img.shape, how_to_section=None)
+
+    def _make_radial_sectioning_frame(self):
+        self.radsectioning_frame = tk.Frame( self.sectioning_frame, bg='black', padx=5, pady=5,
+            highlightcolor="#00fa32", highlightthickness=2, bd=10,highlightbackground="#00fa32")
+        self.radsectioning_frame.pack(side=tk.TOP, expand=tk.NO, fill=tk.X)
+
+        tk.Label(self.radsectioning_frame, text="Radial sectioning",fg="#00fa32", bg='black' , font= 'Helvetica 14 bold')\
+            .pack(side=tk.TOP)
+
+    def _pack_the_master_frame(self):
         self.nb.pack( side=tk.TOP, expand=tk.YES)
         self.info_frame.pack( side=tk.TOP, expand=tk.YES, fill=tk.X)
 
@@ -163,7 +226,7 @@ class Peakaboo(tk.Frame):
     def _set_info_frame(self):
         self.info_frame = tk.Frame( self.master, bg="black")
     
-    def _set_infos(self):
+    def _set_hover_messages(self):
         self._hover_message( self.browser.IV.range_slider.entry_maxval,  "maximum color scale" )
         self._hover_message( self.browser.IV.range_slider.entry_minval,  "minimum color scale" )
         self._hover_message( self.browser.IV.range_slider.canvas,  "adjust color scale" )
@@ -174,8 +237,13 @@ class Peakaboo(tk.Frame):
         self.peak_detection_frame.pack(side=tk.LEFT, expand=tk.NO)
     
     def _make_mask_and_geometry_frame(self):
-        self.mask_geom_frame = tk.Frame(self.nb, bg='black', highlightbackground="#00fa32", highlightthickness=0, padx=10, pady=10)
-        self.mask_geom_frame.pack(side=tk.LEFT)
+        self.mask_frame = tk.Frame(self.nb, bg='black', highlightbackground="#00fa32", 
+                        highlightthickness=2, bd=10)
+        self.mask_frame.pack(side=tk.TOP, fill=tk.X)
+        
+        self.geom_frame = tk.Frame(self.nb, bg='black', highlightbackground="#00fa32", 
+                        highlightthickness=2, bd=10)
+        self.geom_frame.pack(side=tk.TOP, fill=tk.X)
     
     def _make_tooltip_frame(self):
         
@@ -267,24 +335,33 @@ class Peakaboo(tk.Frame):
         self.show_rbins=True
 
     def _set_radial_bin_widgets(self):
-        fr =  self.radpro_frame 
+        entry_frame =  tk.Frame( self.radsectioning_frame, bg="black")
+        entry_frame.pack(side=tk.TOP, fill=tk.X)
+
         some_text = """List of radial bin dividers for sectioning image.\nEnter a comma separated string e.g. 0,400,600"""
-        tk.Label(fr, text=some_text, justify=tk.LEFT, fg="#00fa32", bg='black').pack(side=tk.TOP) 
+        tk.Label(entry_frame, text=some_text, justify=tk.LEFT, fg="#00fa32", bg='black')#.pack(side=tk.TOP) 
+        
         self.radial_bin_var = tk.StringVar()
-        tk.Entry( fr, textvariable=self.radial_bin_var, fg="#00fa32", bg='black',  insertbackground="#00fa32" ).pack( side=tk.TOP)
-        tk.Button( fr, text="Set", command=self._radial_bins_from_entry, highlightbackground='black').pack(side=tk.TOP)
+        tk.Entry(entry_frame, textvariable=self.radial_bin_var, fg="#00fa32", bg='black', insertbackground="#00fa32" )\
+            .pack( side=tk.TOP, pady=10, padx=10, fill=tk.X)
         
-        
-        tk.Button(fr, text="Show", command=self._show_radial_bins, highlightbackground='black').pack(side=tk.TOP)
-        tk.Button(fr, text="Hide", command=self._hide_radial_bins, highlightbackground='black').pack(side=tk.TOP)
+        button_frame = tk.Frame( self.radsectioning_frame, bg="black", bd=5)
+        button_frame.pack( side=tk.TOP, expand=tk.YES, fill=tk.BOTH)
+        tk.Button( button_frame, text="Set", command=self._radial_bins_from_entry, highlightbackground='black')\
+            .pack(side=tk.LEFT,expand=tk.YES,fill=tk.X)
+        tk.Button(button_frame, text="Show", command=self._show_radial_bins, highlightbackground='black')\
+            .pack(side=tk.LEFT,expand=tk.YES,fill=tk.X)
+        tk.Button(button_frame, text="Hide", command=self._hide_radial_bins, highlightbackground='black')\
+            .pack(side=tk.LEFT, expand=tk.YES,fill=tk.X)
         
 
     def _make_radpro_button(self):
-        
+       
+        fr = tk.Frame( self.imageops_frame, bg="black", bd=10)
+        fr.pack(side=tk.TOP, )
         self.radpro_var = tk.IntVar()
-        
-        self.radpro_button = tk.Button(self.radpro_frame, text="Display radial profile", 
-            command=self._display_radpro, highlightbackground="black", highlightthickness=2 ).pack(side=tk.TOP)
+        self.radpro_button = tk.Button(fr, text="Display radial profile", 
+            command=self._display_radpro, highlightbackground="black",width=30, highlightthickness=2 ).pack(side=tk.TOP)
         self.radpro_var.set(0)
 
     def _display_radpro(self):
@@ -341,36 +418,38 @@ class Peakaboo(tk.Frame):
 
     def _detector_center_widgets(self):
 
-        fr = tk.Frame( self.mask_geom_frame, background="black",
-            highlightthickness=1, highlightbackground="#00fa32", padx=10,pady=10)
-        fr.pack(side=tk.TOP, expand=tk.YES,)
+        fr = tk.Frame( self.geom_frame, background="black",
+            highlightthickness=2, bd=5,highlightbackground="#00fa32")
+        fr.pack(side=tk.TOP, fill=tk.X)
         
-        self.centX_var =  tk.DoubleVar()
-        self.centY_var =  tk.DoubleVar()
+        self.centX_var = tk.DoubleVar()
+        self.centY_var = tk.DoubleVar()
         
         color={"foreground":"#00fa32", "background":"black"}
+        
         title_frame = tk.Frame( fr, bg="black" )
-        title_frame.pack( side=tk.TOP)
-        tk.Label(title_frame, text="Set detector center", padx=3, pady=3, font= 'Helvetica 14 bold', **color).pack( side=tk.TOP)
+        title_frame.pack( side=tk.TOP,)
+        tk.Label(title_frame, text="Set detector center", font= 'Helvetica 14 bold', **color)\
+            .pack( side=tk.TOP)
 
         
         ex_frame = tk.Frame( fr, bg="black")
         ex_frame.pack( side=tk.TOP)
-        ex=tk.Entry( ex_frame, textvariable=self.centX_var, width=4)
-        ex.pack( side=tk.LEFT)
-        tk.Label(ex_frame, text="fast-scan",**color).pack( side=tk.LEFT)
+        ex=tk.Entry( ex_frame, textvariable=self.centX_var, width=5)
+        ex.pack( side=tk.LEFT, expand=tk.YES, padx=3,pady=3)
+        tk.Label(ex_frame, text="fast-scan",width=8,**color).pack( side=tk.LEFT, expand=tk.YES)
         
-        ey_frame = tk.Frame( fr, bg="black")
+        ey_frame = tk.Frame( fr, bg="black",)
         ey_frame.pack( side=tk.TOP)
-        ey = tk.Entry( ey_frame, textvariable=self.centY_var,width=4 )
-        ey.pack( side=tk.LEFT)
-        tk.Label(ey_frame, text="slow-scan", **color).pack( side=tk.LEFT)
+        ey = tk.Entry( ey_frame, textvariable=self.centY_var, width=5)
+        ey.pack( side=tk.LEFT, expand=tk.YES, padx=3,pady=3)
+        tk.Label(ey_frame, text="slow-scan",width=8, **color).pack( side=tk.LEFT, expand=tk.YES)
         
-        tk.Button(fr, text="Set", highlightbackground="black", \
-            command=self._set_center,).pack( side=tk.TOP)
+        tk.Button(fr, text="Set", width=16,highlightbackground="black", \
+            command=self._set_center,).pack( side=tk.TOP, expand=tk.NO,pady=3)
         
-        ey.config({"bg": "black", "insertbackground":"#00fa32"})
-        ex.config({"bg": "black",  "insertbackground":"#00fa32"})
+        ey.config({"bg": "black", "insertbackground":"#00fa32","selectforeground":"black", "selectbackground":"#00fa32"})
+        ex.config({"bg": "black",  "insertbackground":"#00fa32","selectforeground":"black", "selectbackground":"#00fa32"})
         self.centX_var.set(self.CENT[0])
         self.centY_var.set(self.CENT[1])
         ey.config({"fg": "#00fa32"})
@@ -385,7 +464,7 @@ class Peakaboo(tk.Frame):
         self._set_radpro_maker()
     
         self._set_R()
-        
+        self._reset_radial_bins()
 
     def _sel_files(self):
         file_opt = {'filetypes': [],
@@ -410,23 +489,28 @@ class Peakaboo(tk.Frame):
     
     def _show_mask( self):
         if self.MASK is not None:
-            self.mask = self.mask_join( self.MASK, self.MASK_UPDATE) * self.MASK_BEAM
+            self.mask = self.mask_join( self.MASK, self.MASK_SCALED) * self.MASK_BEAM
             self.browser.IV.set_data( self.browser.img * self.mask)
             self.browser.IV.fig.canvas.draw()
-
+            self.showing_mask=True
+        else:
+            self.launch_warning("Mask is set to None! Try loading a numpy array")
+    
     def _hide_mask( self):
         self.browser.IV.set_data( self.browser.img )
         self.browser.IV.fig.canvas.draw()
         self.showing_mask=False
 
-    def _set_mask(self):
+    def _load_mask_from_file(self):
         self.mask_file, self.MASK = self._load_numpy_binary("MASK")
         
         if has_loki: 
             self._set_radpro_maker()
             if self.viewing_radpro:
                 self._update_radpro()
-        self.mask_loaded_label.config(text="LOADED %s!"%self.mask_file)
+        self.mask_loaded_label.config(text="%s"%os.path.basename(self.mask_file))
+
+        self._set_new_mask()
 
     def _save_mask(self):
         if self.MASK is None and self.MASK_BEAM ==1:
@@ -435,7 +519,7 @@ class Peakaboo(tk.Frame):
         fname = tkFileDialog.asksaveasfilename(defaultextension=".npy")
         if fname=="":
             return
-        np.save( fname, self.mask_join( self.MASK, self.MASK_UPDATE) *self.MASK_BEAM )
+        np.save( fname, self.mask_join( self.MASK, self.MASK_SCALED) *self.MASK_BEAM )
         print("Saved %s"%fname)
 
     def _set_R(self):
@@ -443,75 +527,104 @@ class Peakaboo(tk.Frame):
         
         Yvals, Xvals = np.indices( self.browser.img.shape)
         self.R = np.sqrt( (Yvals-self.CENT[1])**2 + (Xvals-self.CENT[0])**2 ) 
-  
+        PK_PAR["R"] = self.R
+
     def _update_beam_mask(self, scale):
         scale = int(scale)
         self.MASK_BEAM = self.R > scale
         self._show_mask()
-        
 
-    def _mask_dilation(self):
+    def _make_gaussian_filter_scale(self):
+        
+        self.gauss_scale_frame = tk.Frame( self.filters_frame,
+            bg="black") 
+        self.gauss_scale_frame.pack(side=tk.TOP)
+
+        tk.Label(self.gauss_scale_frame, text="Gaussian filter sigma", fg="#00fa32", bg="black").pack(side=tk.TOP)
+        self.gauss_filt_scale = tk.Scale( self.gauss_scale_frame,  fg="#00fa32", bg='black',
+            length=200,highlightbackground="#00fa32", highlightthickness=0,
+            command=self._set_gaussian_filter_value, from_=0, to=5,resolution=0.05, orient=tk.HORIZONTAL)
+        self.gauss_filt_scale.pack(side=tk.TOP, pady=5)
+
+    def _set_gaussian_filter_value(self, scale_factor):
+        scale_factor = float( scale_factor)
+        PK_PAR['sig_G'] = scale_factor
+        self.browser.IV.set_data( gaussian_filter( self.browser.img, scale_factor) )
+        self.pk_par_vars["sig_G"].set( str(scale_factor))
+
+    def _make_mask_dilation_widgets(self):
         self.mask_dilate_frame = tk.Frame( self.mask_operations_frame,  bg='black', pady=7)
         self.mask_dilate_frame.pack(side=tk.TOP)
         
         self.dilate_scale = tk.Scale( self.mask_dilate_frame,length=100, fg="#00fa32", bg='black' ,
-            label="dilation factor", highlightbackground="#00fa32", highlightthickness=2,
+            label="dilation factor", highlightbackground="#00fa32", highlightthickness=1,
             command=self._update_mask, from_=-50, to=50, orient=tk.HORIZONTAL)
-        self.dilate_scale.pack(side=tk.LEFT)
+        self.dilate_scale.pack(side=tk.LEFT, padx=5, expand=tk.YES, fill=tk.X)
         
         self.beam_mask_scale = tk.Scale( self.mask_dilate_frame,length=100, fg="#00fa32", bg='black' ,
-            label="beam mask", highlightbackground="#00fa32", highlightthickness=2,
+            label="beam mask", highlightbackground="#00fa32", highlightthickness=1,
             command=self._update_beam_mask, from_=0, to=150, orient=tk.HORIZONTAL)
-        self.beam_mask_scale.pack(side=tk.LEFT)
+        self.beam_mask_scale.pack(side=tk.LEFT, padx=5, expand=tk.YES, fill=tk.X)
 
+
+    def _set_new_mask(self):
+        if self.MASK is not None:
+            new_mask = self.mask_join( self.MASK, self.MASK_SCALED )*self.MASK_BEAM
+            PK_PAR["mask"] =  new_mask
+            self.PK_IMG.set_mask( new_mask)
+        else:
+            self.launch_warning("Not base mask set.. Load numpy array mask")
 
     def _update_mask(self, scale_factor):
         scale_factor = int(scale_factor)
         if self.MASK is not None:
             lognot = np.logical_not
             if scale_factor > 0:
-                self.MASK_UPDATE = lognot(binary_dilation( lognot(self.MASK), iterations=scale_factor)) 
+                self.MASK_SCALED = lognot(binary_dilation( lognot(self.MASK), iterations=scale_factor)) 
                 self.mask_join = np.logical_and
             elif scale_factor < 0:
-                self.MASK_UPDATE = lognot(binary_erosion( lognot(self.MASK), iterations=abs(scale_factor))) 
+                self.MASK_SCALED = lognot(binary_erosion( lognot(self.MASK), iterations=abs(scale_factor))) 
                 self.mask_join = np.logical_or
             else:
-                self.MASK_UPDATE=1
+                self.MASK_SCALED=1
                 self.mask_join = np.logical_and
             
             self._show_mask()
 
     def _mask_loader(self):
-        fr = tk.Frame(  self.mask_geom_frame, bg='black', padx=3, pady=3,highlightbackground="#00fa32", highlightthickness=2)
-        fr.pack(side=tk.TOP, expand=tk.YES, )
+        fr = tk.Frame(  self.mask_frame, bg='black', padx=3, pady=3,highlightbackground="#00fa32", highlightthickness=2)
+        fr.pack(side=tk.TOP, fill=tk.X )
         self.mask_operations_frame = fr
         
         title_fr=tk.Frame( fr, bg="black",)
         title_fr.pack(side=tk.TOP,)
-        tk.Label(title_fr, text="Mask operations", fg="#00fa32", bg='black', font= 'Helvetica 14 bold').pack(side=tk.TOP) 
+        tk.Label(title_fr, text="Mask operations", fg="#00fa32", bg='black', font='Helvetica 14 bold').pack(side=tk.TOP) 
 
         mask_load_fr = tk.Frame( fr, bg="black")
-        mask_load_fr.pack(side=tk.TOP, )
+        mask_load_fr.pack(side=tk.TOP,expand=tk.YES, fill=tk.X )
         
         self.mask_loaded_label = tk.Label(mask_load_fr, text="Load a numpy binary mask (.npy)", 
             highlightbackground="#00fa32", 
             highlightthickness=0, bg='black',
             fg="#00fa32")
-        self.mask_loaded_label.pack(side=tk.LEFT,)
+        #self.mask_loaded_label.pack(side=tk.LEFT,)
         
-        tk.Button(mask_load_fr, text="Load" , relief=tk.RAISED, highlightbackground="black", command=self._set_mask)\
-            .pack(side=tk.LEFT,)
+        tk.Button(mask_load_fr, text="Load" , relief=tk.RAISED, highlightbackground="black", command=self._load_mask_from_file)\
+            .pack(side=tk.LEFT, fill=tk.X, expand=tk.YES)
         tk.Button(mask_load_fr, text="Save" , relief=tk.RAISED, highlightbackground="black", command=self._save_mask)\
-            .pack(side=tk.LEFT,)
+            .pack(side=tk.LEFT, fill=tk.X, expand=tk.YES)
        
         
-        mask_display_fr = tk.Frame( fr, bg='black')
-        mask_display_fr.pack(side=tk.TOP)
-        tk.Label(mask_display_fr, text="Mask display",fg="#00fa32", bg='black' ).pack(side=tk.LEFT)
-        tk.Button(mask_display_fr, text="Show" , relief=tk.RAISED, highlightbackground="black", command=self._show_mask)\
-            .pack(side=tk.LEFT,)
-        tk.Button(mask_display_fr, text="Hide" , relief=tk.RAISED, highlightbackground="black", command=self._hide_mask)\
-            .pack(side=tk.LEFT,)
+        #mask_display_fr = tk.Frame( fr, bg='black')
+        #mask_display_fr.pack(side=tk.TOP)
+        #tk.Label(mask_load_fr, text="Mask display",fg="#00fa32", bg='black' ).pack(side=tk.LEFT)
+        tk.Button(mask_load_fr, text="Show" , relief=tk.RAISED, highlightbackground="black", command=self._show_mask)\
+            .pack(side=tk.LEFT,expand=tk.YES, fill=tk.X)
+        tk.Button(mask_load_fr, text="Hide" , relief=tk.RAISED, highlightbackground="black", command=self._hide_mask)\
+            .pack(side=tk.LEFT, expand=tk.YES,fill=tk.X)
+        
+        tk.Button(mask_load_fr, text="Set", command=self._set_new_mask, highlightbackground="black", relief=tk.RAISED)\
+            .pack( side=tk.LEFT, fill=tk.X, expand=tk.YES)
          
     def _R_loader(self):
         fr = tk.Frame(  self.peak_detection_frame)
@@ -522,10 +635,14 @@ class Peakaboo(tk.Frame):
 
     def make_number_entries(self):
         color = {"fg":"#00fa32", "bg":"black"}
-        fr = tk.Frame( self.peak_detection_frame, 
-            bg="black", highlightbackground="#00fa32", highlightthickness=1, padx=10, pady=10)
-        fr.pack(side=tk.TOP, expand=tk.YES, fill=tk.BOTH)
+        _fr = tk.Frame( self.peak_detection_frame, 
+            bg="black", highlightbackground="#00fa32", 
+            highlightthickness=2)
+        _fr.pack(side=tk.TOP, expand=tk.YES, fill=tk.BOTH)
         
+        fr = tk.Frame( _fr, bg="black")
+        fr.pack(side=tk.TOP, expand=tk.YES, fill=tk.BOTH, padx=10,pady=10)
+
         self.pk_par_vars ={}
         self.all_number_entry_widgets = {}
         for row,e in enumerate(self.number_entries.keys()):
@@ -546,7 +663,7 @@ class Peakaboo(tk.Frame):
         hlcolors={"highlightbackground":"#00fa32", "highlightthickness":1}
         colors={"bg":"black", "fg":"#00fa32"}
         fr = tk.Frame( self.peak_detection_frame, bg="black", **hlcolors )
-        fr.pack(side=tk.TOP, expand=tk.YES, fill=tk.BOTH)
+        fr.pack(side=tk.TOP, expand=tk.YES, fill=tk.BOTH, pady=(0,0))
         
         self.bool_checkbuttons = {}
         for row,e in enumerate( self.bool_entries):
@@ -568,9 +685,7 @@ class Peakaboo(tk.Frame):
         tk.Label(warningWindow, text=proc_mssg, background='red', foreground='white', font='BOLD' ).pack()
         tk.Button( warningWindow, text='OK',command=warningWindow.destroy, relief=tk.RAISED,font='BOLD' ).pack()
 
-    
     def _make_peakaboo_inputs(self):
-        
         self.number_entries = {  "sig_G":float, "nsigs":float, 
             "min_snr":float, "sz":int, "r_in":float, "r_out":float, 
             "min_dist":float, "thresh":float , 
@@ -598,21 +713,26 @@ class Peakaboo(tk.Frame):
                 self.launch_warning("Define or load a radial pixel map first!")
                 self.pk_par_vars["run_rad_med"].set(0)
                 return
-            if not self.radial_bins:
+            
+            if PK_PAR["rbins"] is None:
                 self.launch_warning("Define radial bins (Mask/Geom tab) or this is meaningless")
                 self.pk_par_vars["run_rad_med"].set(0)
                 return
+            
+            self.PK_IMG.set_pk_par( PK_PAR)
+            self.PK_IMG._set_up_sectioning(how="radial")
+
 
         def disable_snr_buttons():
             if self.pk_par_vars["filt"].get()==0:
                 self.all_number_entry_widgets["min_snr"].config(state=tk.DISABLED)
-                self.all_number_entry_widgets["min_conn"].config(state=tk.DISABLED)
-                self.all_number_entry_widgets["max_conn"].config(state=tk.DISABLED)
+                #self.all_number_entry_widgets["min_conn"].config(state=tk.DISABLED)
+                #self.all_number_entry_widgets["max_conn"].config(state=tk.DISABLED)
                 self.all_number_entry_widgets["sz"].config(state=tk.DISABLED)
             else:
                 self.all_number_entry_widgets["min_snr"].config(state=tk.NORMAL)
-                self.all_number_entry_widgets["min_conn"].config(state=tk.NORMAL)
-                self.all_number_entry_widgets["max_conn"].config(state=tk.NORMAL)
+                #self.all_number_entry_widgets["min_conn"].config(state=tk.NORMAL)
+                #self.all_number_entry_widgets["max_conn"].config(state=tk.NORMAL)
                 self.all_number_entry_widgets["sz"].config(state=tk.NORMAL)
         
         bool_cmd = {"run_rad_med": check_run_rad_med, "filt": disable_snr_buttons}
@@ -713,7 +833,7 @@ class Peakaboo(tk.Frame):
             self.found_circs.append( circ)
     
     def _detect_peaks(self):
-        self._set_centers()
+        self._detection()
         self._set_found_circs()
         
     def _save_peak_params(self):
@@ -795,27 +915,20 @@ class Peakaboo(tk.Frame):
     def _set_npeaks_lab_text(self):
         self.npeaks_lab.config(text=self.npeaks_lab_text%self.Num_peaks)
 
-    def _set_centers(self):
+    def _detection(self):
         
         self.get_inputs()
         
-        PK_PAR["mask"] = self.MASK
-        PK_PAR["R"] = self.R
-        PK_PAR["cent"] = self.CENT 
-        print (PK_PAR)
-        if PK_PAR["mask"] is not None:
-            mask = self.mask_join( PK_PAR["mask"], self.MASK_UPDATE )*self.MASK_BEAM
-            self.found_centers,_ = peaks.pk_pos(  self.browser.img*mask, **PK_PAR )
-        else:
-            self.found_centers,_ = peaks.pk_pos(  self.browser.img, **PK_PAR )
+        PK_PAR["cent"] = self.CENT
+        
+        self.found_centers,_ = self.PK_IMG.pk_pos( pk_par=PK_PAR, img=self.browser.img)
        
-        self.Num_peaks = len( self.found_centers)
+        self.Num_peaks = len(self.found_centers)
         if self.Num_peaks > self.too_many_peaks_val:
             self.launch_warning("Probably too many peaks, change parameters!")
                 
         self._set_npeaks_lab_text() 
         print("Found %d peaks"%(len(self.found_centers) ))
-
 
     def _update_browser(self,):
         
@@ -836,6 +949,8 @@ class Peakaboo(tk.Frame):
         else:
             self.browser.IV.set_data( self.browser.img)
         self.browser._set_xy_limits()
+        if self.showing_mask:
+            self._show_mask()
         self.browser.IV.fig.canvas.draw()
 
 

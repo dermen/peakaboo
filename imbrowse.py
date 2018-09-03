@@ -134,7 +134,7 @@ class BrowseImages:
             image_nav_frame = self.image_nav_frame
         
         button_frame0 = tk.Frame(image_nav_frame, bg='black', highlightbackground="#00fa32", highlightthickness=2)
-        button_frame0.pack(side=tk.TOP,  **frpk)
+        button_frame0.pack(side=tk.TOP,  fill=tk.X, expand=tk.NO, **frpk)
 
         tk.Label( button_frame0, text="Image navigation", fg="#00fa32",bg='black' ,  font= 'Helvetica 14 bold')\
             .pack(side=tk.TOP, expand=tk.YES,)
@@ -148,17 +148,16 @@ class BrowseImages:
 #       navigation strides
         self.nav_buttons = {}
         for stride in self.image_strides:
-            if stride < 0:
-                cmd = self._prev
+            if stride > 0:
+                self.nav_buttons[stride] = tk.Button(button_frame0,
+                    text='%+d'%stride,
+                    command=lambda increment=np.abs(stride): self._next(increment) , **btnstyle)
             else:
-                cmd = self._next
+                self.nav_buttons[stride] = tk.Button(button_frame0,
+                    text='%+d'%stride,
+                    command=lambda increment=np.abs(stride): self._prev(increment) , **btnstyle)
             
-            self.nav_buttons[stride] = tk.Button(button_frame0,
-                text='%+d'%stride,
-                command=lambda increment=np.abs(stride): cmd(increment) , **btnstyle)
-            
-            self.nav_buttons[stride].pack(side=tk.LEFT, expand=tk.NO, **frpk)
-
+            self.nav_buttons[stride].pack(side=tk.LEFT, expand=tk.YES, fill=tk.X, **frpk)
 
     def _next(self, increment):
         self.counter += increment
@@ -176,11 +175,5 @@ class BrowseImages:
     def _update_img_info_text(self):
         text=self.img_info_text%( self.imgs.filename_i, self.imgs.shot_i, self.imgs.N_i-1  )
         self.img_info_lab.config(text=text)
-
-
-
-
-
-
 
 

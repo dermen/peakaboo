@@ -75,18 +75,32 @@ def detect_peaks(image, neighborhood=None):
     return detected_peaks
 
 
+def load_peak_param_file( filename):
+    """
+    Load a peak parameters hdf5 file
+    into a python dictionary
+    """
+    PK_PAR = {}
+    with h5py.File(filename, "r") as h5:
+        for name in h5.keys():
+            data = h5[name].value
+            if data == "_NULL":
+                data = None
+            PK_PAR[name] = data
+    
+    return PK_PAR
+
 class PeakabooImage:
     """ this class is peak finding on an image"""
 
-    def __init__(self, pk_par, img_sh, sectioning="radial", img=None):
+    def __init__(self, pk_par, img_sh, how_to_section="radial", img=None):
         self.pk_par = pk_par # peakaboo parameters dictionary
         self.img_sh = img_sh # image shape
-        self.L = np.zeros( img_sh, np.int) # for storing labeled regions in image 
         if img is not None:
             self.set_image( img)
         
         self.set_mask( pk_par["mask"] )
-        self._set_up_sectioning(how=sectioning)
+        self._set_up_sectioning(how=how_to_section)
     
     def set_mask(self, mask):
         
@@ -98,19 +112,37 @@ class PeakabooImage:
   
         self.mask_1d = self.mask.ravel()
 
-    def _set_up_sectioning(self, how="radial"):
-        assert( how in ["radial", "fromfile"])
+    def _set_up_sectioning(self, how=None):
+        if how is None:
+            self._no_sectioning()
+            return
+        else:
+            assert( how in ["radial", "fromfile"])
+         
         if how=="radial":
             self._radial_sectioning()
   
         elif how=="fromfile":
             self._fromfile_sectioning()
     
+    def _no_sectioning(self):
+        """
+        Disables image sectionining such that when peaks are computed
+        a global thresholding is applied.
+        This is dangerous if the image is not strictly uniform
+        as it will lead to biasing (weak peaks will be harder to detect).
+        Diffraction images are usually biased in the radial direction
+        hence it is best to at least do a radial sectionining.
+        Tools to do radial sectionining are embedded in the GUI.
+        """
+        self.section_array = np.ones( self.img_sh, np.int) # makes entire image a single section
+        self._set_section_idx()
+
     def _radial_sectioning(self):
         """
-        section the image according to radial bins
-        in this way we can detect the local maxima in
-        each radial bin.. this is to avoid biasing.. 
+        section the image according to radial bins.
+        In this way we can detect the peaks as local maxima in
+        each radial bin. this is to avoid biasing.. 
         """
 #       make sure rbins is defined
         assert( self.pk_par["rbins"] is not None)
@@ -129,7 +161,7 @@ class PeakabooImage:
     def _set_section_idx(self):
         """
         stores 1D index of each pixel in a section
-        excluding masked pixels..
+        excluding masked pixels.
         """
         
         section_array_1d = self.section_array.ravel()
@@ -159,7 +191,6 @@ class PeakabooImage:
 
 
     def section_thresholding_mean(self):
-        
         poss_peaks = np.zeros( self.img_1d.shape, np.bool )
 
         for section_id in self.section_idx.keys():
@@ -170,7 +201,6 @@ class PeakabooImage:
             m = pts.mean()
             s = pts.std()
             
-
             is_peak = np.logical_and( pts >= m + self.pk_par["nsigs"]*s, 
                                         pts > self.pk_par["thresh"] )
 
@@ -199,7 +229,7 @@ class PeakabooImage:
 
 
     def section_thresholding_zscore(self):
-        
+        """threshold using median statistics""" 
         poss_peaks = np.zeros( self.img_1d.shape, np.bool)
         
         #self.some_peaks = []
@@ -222,9 +252,11 @@ class PeakabooImage:
         self.pk_mask =  poss_peaks.reshape(self.img_sh)
 
     def set_image( self, img):
-        self.img = img
-        self.img_1d = img.copy().ravel()
-
+        if self.pk_par["sig_G"] is not None:
+            self.img = gaussian_filter( img, self.pk_par["sig_G"])
+        else:
+            self.img = img
+        self.img_1d = self.img.copy().ravel()
 
     def radius_filters(self):
         r_in = self.pk_par["r_in"]
@@ -267,8 +299,8 @@ class PeakabooImage:
         new_intens =  []
         
         #ypos, xpos = map( np.array, zip(*self.pos) )
-        ypos = np.array([ p[0] for p in self.pos ]).astype(float)
-        xpos = np.array([ p[1] for p in self.pos ]).astype(float)
+        ypos = np.array([ p[0] for p in self.pos ])
+        xpos = np.array([ p[1] for p in self.pos ])
         
         SubImg = streaks.SubImages(self.img, 
             ypos,  xpos, 
@@ -287,8 +319,10 @@ class PeakabooImage:
             s_pk = SubImg_peakmask.sub_imgs[i_s]
 
             subimg_proc = streaks.SubImageProcess( s )
-            residual = subimg_proc.get_subtracted_img( bg_zscore)
-            
+            try:
+                residual = subimg_proc.get_subtracted_img( bg_zscore)
+            except:
+                continue
             noise = residual.std()
             
             lab,nlab = measurements.label(s_pk.img)
@@ -378,8 +412,10 @@ class PeakabooImage:
         min_conn = self.pk_par["min_conn"]
         max_conn = self.pk_par["max_conn"]
         peak_COM = self.pk_par["peak_COM"]
-        _ = measurements.label( self.img*self.pk_mask, output=self.L)
-        obs = measurements.find_objects(self.L)
+        
+        self.lab_img,_ = measurements.label( self.img*self.pk_mask) 
+        
+        obs = measurements.find_objects(self.lab_img)
         for i,(sy,sx) in enumerate(obs):
             lab_idx = i+1
             y1 = max(0, sy.start-sz)
@@ -387,21 +423,27 @@ class PeakabooImage:
             x1 = max(0, sx.start-sz)
             x2 = min(self.img_sh[1], sx.stop+sz)    
             
-            l = self.L[y1:y2,x1:x2]
+            
+            l = self.lab_img[y1:y2,x1:x2]
+            
             nconn = np.sum(l==(lab_idx))
             if nconn < min_conn:
                 continue
             if nconn > max_conn:
                 continue
-            pix = self.img[ y1:y2, x1:x2]  
+            
+            pix = self.img[ y1:y2, x1:x2]
+            
             self.intens.append( measurements.maximum( pix, l, lab_idx)) 
+            
             if peak_COM:
                 y,x = measurements.center_of_mass( pix, l, lab_idx) 
             else:
                 y,x = measurements.maximum_position( pix, l, lab_idx) 
+            
             self.pos.append( (y+y1,x+x1))
-        
-        self.intens = np.array( self.intens)
+            
+        self.intens = np.array(self.intens)
 
     def pk_pos(self, img=None, pk_par=None):
         if pk_par is not None:
@@ -415,6 +457,8 @@ class PeakabooImage:
         self.snr_filter2()
         return self.pos, self.intens
 
+    def set_pk_par(self, pk_par):
+        self.pk_par = pk_par
 
 
 def rad_med(I, R, rbins, thresh, mask_val=0):
@@ -556,18 +600,6 @@ def pk_pos( img_, make_sparse=True, nsigs=7, sig_G=None, thresh=1, sz=4, min_snr
     return pos, intens
 
 
-
-def load_peak_param_file( filename):
-    PK_PAR = {}
-    with h5py.File(filename, "r") as h5:
-        for name in h5.keys():
-            data = h5[name].value
-            print (name, data )
-            if data == "_NULL":
-                data = None
-            PK_PAR[name] = data
-    
-    return PK_PAR
 
 
 
