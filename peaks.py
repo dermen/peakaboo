@@ -10,38 +10,11 @@ import pylab as plt
 
 import streaks
 
-def plot_pks( img, pk=None, show=True,ret_sub=False, **kwargs):
-    if pk is None:
-        pk,I = pk_pos(img,**kwargs) 
-    m = img[ img > 0].mean()
-    s = img[img > 0].std()
-    plt.imshow( img, vmax=m+5*s, vmin=m-s, cmap='viridis', aspect='equal', interpolation='nearest')
-    ax = plt.gca()
-    for cent in pk:
-        circ = plt.Circle(xy=(cent[1], cent[0]), radius=3, ec='r', fc='none',lw=1)
-        ax.add_patch(circ)
-    if show:
-        plt.show()
-
-    if ret_sub:
-        return pk,I
-    
-def plot_pks_serial( img, pk, delay, ax):
-    m = img[ img > 0].mean()
-    s = img[img > 0].std()
-    while ax.patches:
-        _=ax.patches.pop()
-    ax.images[0].set_data(img)
-    ax.images[0].set_clim(m-s, m+5*s)
-    #ax.imshow( img, vmax=m+5*s, vmin=m-s, cmap='viridis', aspect='equal', interpolation='nearest')
-    for cent in pk:
-        circ = plt.Circle(xy=(cent[1], cent[0]), 
-            radius=5, ec='Deeppink', fc='none',lw=1)
-        ax.add_patch(circ)
-    plt.draw()
-    plt.pause(delay)
-
-
+###################################################
+# Currently not using this, but its for detecting 
+# local maxima. It's effective when the background 
+# isn't too noisy otherwise requires ample smoothing
+######################################################
 def detect_peaks(image, neighborhood=None):
     """
     Takes an image and detect the peaks usingthe local maximum filter.
@@ -93,13 +66,15 @@ def load_peak_param_file( filename):
 class PeakabooImage:
     """ this class is peak finding on an image"""
 
-    def __init__(self, pk_par, img_sh, how_to_section="radial", img=None):
+    def __init__(self, pk_par, img_sh, how_to_section=None, img=None):
         self.pk_par = pk_par # peakaboo parameters dictionary
         self.img_sh = img_sh # image shape
+        
+        self.set_mask( pk_par["mask"] )
+        
         if img is not None:
             self.set_image( img)
         
-        self.set_mask( pk_par["mask"] )
         self._set_up_sectioning(how=how_to_section)
     
     def set_mask(self, mask):
@@ -191,7 +166,60 @@ class PeakabooImage:
         self._set_section_idx()
 
 
+    def section_thresholding(self):
+        
+        poss_peaks = np.zeros( self.img_1d.shape, np.bool )
+        for section_id in self.section_idx.keys():
+            
+            inds = self.section_idx[section_id]
+            
+            self.pts = self.img_1d[ inds]
+            
+            self._set_possible_peaks_with_median_stats()
+            
+            is_above_thresh = self.pts > self.pk_par["thresh"]
+
+            is_peak = np.logical_and( self._is_possible_peak, is_above_thresh)
+            
+            poss_peaks[inds] =  is_peak
+            
+        self.pk_mask =  poss_peaks.reshape(self.img_sh)
+
+
+    def _set_possible_peaks_with_median_stats(self):
+        """
+        Finds outliers in the section using median statistics
+
+        If median deviation is 0, then falls back to  mean statistics
+        """
+        med = np.median( self.pts )
+        diffs = np.sqrt( (self.pts-med)**2 )
+        med_diff = np.median( diffs)
+        if med_diff == 0:
+#           fall back to mean statistics...
+            print("fall bac to mean ")
+            self._set_possible_peaks_with_mean_stats()
+        else: 
+            Zscores = 0.6745 * diffs / med_diff 
+            self._is_possible_peak = Zscores > self.pk_par["nsigs"]
+    
+    def _set_possible_peaks_with_mean_stats(self):
+        """
+        Finds outliers using mean statistics
+
+        Median is priority in the standard Peakaboo usage.
+        """
+        m = self.pts.mean()
+        s = self.pts.std()
+        self._is_possible_peak = self.pts > m + self.pk_par["nsigs"] *s
+        
+        print (m, s, np.sum(self._is_possible_peak ) / float(self.pts.shape[0]))
+
+        
+
     def section_thresholding_mean(self):
+        
+        print("Thresholding!")
         poss_peaks = np.zeros( self.img_1d.shape, np.bool )
 
         for section_id in self.section_idx.keys():
@@ -216,6 +244,8 @@ class PeakabooImage:
         that are too close to one another
         """
         #NOTE: there beith bugs below?
+        if not self.pos:
+            return
         YXI = np.hstack( ( self.pos, self.intens[:,None]))
         K = cKDTree( YXI[:,:2])    
         pairs = np.array(list( K.query_pairs( self.pk_par["min_dist"])))
@@ -230,33 +260,53 @@ class PeakabooImage:
 
 
     def section_thresholding_zscore(self):
-        """threshold using median statistics""" 
+        """threshold each array section using median statistics""" 
+        
         poss_peaks = np.zeros( self.img_1d.shape, np.bool)
         
-        #self.some_peaks = []
         for section_id in self.section_idx.keys():
             
             inds = self.section_idx[section_id]
             
             pts = self.img_1d[inds]
         
+            if not np.any( pts > 0):
+                continue
+
             med = np.median( pts )
             diffs = np.sqrt( (pts-med)**2 )
             med_diff = np.median( diffs)
-            Zscores = 0.6745 * diffs / med_diff
-            
+            if med_diff == 0:
+                med_diff = np.median( diffs[ pts > 0])
+                 
+            Zscores = 0.6745 * diffs / med_diff #np.divide( diffs , med_diff , 
+                                        #out=np.zeros_like( diffs), 
+                                        #where=med_diff != 0)
+            print ( "med",med, "med_diff",med_diff,"ptsmean", pts.mean(), "npts", len( pts) ) 
+            print ( Zscores)
+            print( self.pk_par["nsigs"] ) 
+            print ( np.sum( Zscores >= self.pk_par["nsigs"]))
             is_peak = np.logical_and( Zscores >= self.pk_par["nsigs"], pts > self.pk_par["thresh"] )
+            
             poss_peaks[inds] =  is_peak
             
-            #self.some_peaks.append( inds[is_peak] )  
-
         self.pk_mask =  poss_peaks.reshape(self.img_sh)
 
     def set_image( self, img):
+        """
+        set the peakaboo image!
+        """
+        self.img = img
+
         if self.pk_par["sig_G"] is not None:
-            self.img = gaussian_filter( img, self.pk_par["sig_G"])
-        else:
-            self.img = img
+            self.filtered_img = gaussian_filter( self.img * self.mask, self.pk_par["sig_G"] )
+        
+        #if self.pk_par["sig_G"] is not None:
+        #    self.img = gaussian_filter( img*self.mask, self.pk_par["sig_G"])
+        #else:
+        #    self.img = img
+        
+        self.set_global_noise() 
         self.img_1d = self.img.copy().ravel()
 
     def radius_filters(self):
@@ -293,17 +343,45 @@ class PeakabooImage:
                 self.pos,self.intens = [],[]
 
 
-    def snr_filter2(self, bg_zscore=2):
+    def set_global_noise(self):
+        self.global_noise = self.img[ self.mask ] .std()
+
+    def min_snr_filter(self, bg_zscore=2):
+        """
+        This method looks locally ar each detected peak
+        and analyzes the signal to noise
+
+        bg_zscore , float
+            The median absolute deviation threshold for background pixel assignment
+            
+            All pixels in the vicinity of a detected peak with a zscore below `bg_zscore`
+            are considered background.
+
+        First step, a residual sub image is created around each detected peak
+            where residual image is the raw sub image (with any filters)
+            minus the local background estimation. 
+            Local background estimation is actually a 2D plane fit to background pixels
+            
+            The background pixels are selected using a absolute deviation 
+            filter on the sub image: all pixels with absolute deviation below 
+            `bg_zscore` are assigned to the background!
+
+            Masked pixels to not enter the computation!
+
+        Second step, The peak mask that was created in self.detect is analyzed locally, 
+            and the residual image is used to estimate the peak-in-question SNR
+            If snr is below a self.PK_PAR['min_snr'] then the peak is rejected
+
+        """
         if not self.pk_par["filt"]:
             return
         new_pos = []
         new_intens =  []
         
-        #ypos, xpos = map( np.array, zip(*self.pos) )
         ypos = np.array([ p[0] for p in self.pos ])
         xpos = np.array([ p[1] for p in self.pos ])
         
-        SubImg = streaks.SubImages(self.img, 
+        SubImg = streaks.SubImages(self.filtered_img, 
             ypos,  xpos, 
             sz=self.pk_par["sz"], 
             mask=self.mask, 
@@ -324,13 +402,17 @@ class PeakabooImage:
                 residual = subimg_proc.get_subtracted_img( bg_zscore)
             except:
                 continue
-            noise = residual.std()
             
             lab,nlab = measurements.label(s_pk.img)
             lab_id = lab[ s.rel_peak]
             
+            
+            noise = residual.std()
+            
+            if noise == 0: # NOTE: when does this happen ?
+                noise = self.global_noise 
             snr = residual[ lab==lab_id ].max() / noise
-
+           
             if snr < self.pk_par["min_snr"]:
                 continue
 
@@ -340,71 +422,11 @@ class PeakabooImage:
         self.pos = new_pos
         self.intens = new_intens
 
-
-    def snr_filter(self):
-        if not self.pk_par["filt"]:
-            return
-        new_pos = []
-        new_intens =  []
-        
-        #ypos, xpos = map( np.array, zip(*self.pos) )
-        ypos = np.array([ p[0] for p in self.pos ]).astype(float)
-        xpos = np.array([ p[1] for p in self.pos ]).astype(float)
-        
-        SubImg = streaks.SubImages(self.img, 
-            ypos,  xpos, 
-            sz=self.pk_par["sz"], 
-            mask=self.mask, 
-            cent=self.pk_par["cent"])
-        
-        for i_s, s in enumerate(SubImg.sub_imgs):
-            if not s.img.size: # NOTE: do I still need this??
-                continue
-            
-            nconn = streaks.get_nconn_snr_img(s,self.pk_par["min_snr"])
-            
-            if nconn < 1: 
-                continue
-
-            new_pos.append( self.pos[i_s] )
-            new_intens.append( self.intens[ i_s] )
-        
-        self.pos = new_pos
-        self.intens = new_intens
-
     def detect(self):
-        self.detect_img = self.img* self.pk_mask
-        
-        if self.pk_par["sig_G"] is not None:
-            self.detect_img = gaussian_filter( self.detect_img, self.pk_par["sig_G"])
-    
-        self.lab_img, nlab = measurements.label(detect_peaks(self.detect_img))
-     
-        if self.pk_par["peak_COM"]:
-            self.pos = measurements.center_of_mass( self.img, self.lab_img , np.arange( nlab)+1 )
-            self.intens = measurements.maximum( self.img, self.lab_img, np.arange( nlab)+1) 
-        else:
-            self.pos = measurements.maximum_position( self.img, self.lab_img , np.arange( nlab)+1 )
-            self.intens = measurements.maximum( self.img, self.lab_img, np.arange( nlab)+1) 
-
-    def detect2(self):
-        self.detect_img = self.img* self.pk_mask
-        
-        if self.pk_par["sig_G"] is not None:
-            self.detect_img = gaussian_filter( self.detect_img, self.pk_par["sig_G"])
-    
-        self.lab_img, nlab = measurements.label(self.detect_img)
-     
-        if self.pk_par["peak_COM"]:
-            self.pos = measurements.center_of_mass( self.img, self.lab_img , np.arange( nlab)+1 )
-            self.intens = measurements.maximum( self.img, self.lab_img, np.arange( nlab)+1) 
-        else:
-            self.pos = measurements.maximum_position( self.img, self.lab_img , np.arange( nlab)+1 )
-   
-    def detect3(self):
         """
         a method for detecting peaks, trying to speed things up!
-        run this after running the thresholding (which sets the pk_mask)!
+        
+        Run this after running the thresholding (which sets the pk_mask)!
         """
         self.pos = []
         self.intens = []
@@ -446,162 +468,90 @@ class PeakabooImage:
             
         self.intens = np.array(self.intens)
 
-    def pk_pos(self, img=None, pk_par=None):
+    def pk_pos(self, img=None, pk_par=None, reset_mask=False):
+        """
+        wrapper method for peak detection!
+        
+        img, np.array image
+            if passed, this resets the image
+            
+        pk_par, peakaboo parameter dictinary
+            if passed, this resets the peak parameters
+
+        reset_mask, bool
+            If pk_par contains a new mask then reset the mask
+            with this parameter, otherwise it wont be set!
+            
+            This is left up to the user in order to speed up 
+            the base peak detection process and not waste
+            time comparing new masks with old masks each time
+            peak detection is called!
+
+        This function returns a tuple 2 lists:
+            pk_positions and pk_intensities
+
+        pk_positions is a list of [ (y1,x1), (y2,x2), ... ]
+            where y,x are slow-scan fast-scan peak coors
+
+        pk_intensities is a list of [ I1,  I2, ... ]
+            where I is the peak intensity (the maximum intensity in the peak)
+
+        """
         if pk_par is not None:
             self.set_pk_par(pk_par)
+        
+        if reset_mask:
+            self.set_mask( self.pk_par["mask"])
+        
         if img is not None:
             self.set_image(img)
-        self.section_thresholding_zscore()
-        self.detect3()
+        
+        self.section_thresholding()
+        self.detect()
+        
         self.min_dist_filt()
         self.radius_filters()
-        self.snr_filter2()
+        self.min_snr_filter()
+        
         return self.pos, self.intens
 
     def set_pk_par(self, pk_par):
+        """
+        pk_par is a peakaboo parameter dictionary
+        """
         self.pk_par = pk_par
-
-
-def rad_med(I, R, rbins, thresh, mask_val=0):
-    
-    I1 = I.copy().ravel()
-    R1 = R.ravel()
-
-    R1[ I1==mask_val] = 0
-
-    bin_assign = np.digitize( R1, rbins)
-    
-    for b in np.unique(bin_assign):
-        if b ==0:
-            continue
-        if b == len(rbins):
-            continue
-        inds = bin_assign==b
-        pts = I1[inds]
         
-        med = np.median( pts )
-        diffs = np.sqrt( (pts-med)**2 )
-        med_diff = np.median( diffs)
-        Zscores = 0.6745 * diffs / med_diff
-        pts[ Zscores < thresh] = 0
-        I1[inds] = pts
-    return I1.reshape( I.shape)
-        
-def quick_filter( img, nsigs, mask_val=0): 
-    m = img[ img != mask_val].mean()
-    s = img[ img != mask_val].std()
-    img[ img < m + nsigs*s] = 0
-    return img
+        self.set_mask( pk_par["mask"])
 
+    def plot_pks( self, ax, pk_par = None, show=True, pause=None):
+        """
+        ax, matplotlib axis
 
-def pk_pos( img_, make_sparse=True, nsigs=7, sig_G=None, thresh=1, sz=4, min_snr=2.,
-    min_conn=-1, max_conn=np.inf, filt=False, min_dist=0, r_in=None, r_out=None,
-    mask=None, cent=None, R=None, rbins=None, run_rad_med=False, peak_COM=False, 
-    sectioning_fromfile=False, sectioning_file=None):
+        pk_par, peakaboo peak parameter dictionary
 
-    sz = int(sz)
-    img = img_.copy()
-    
-    if run_rad_med and rbins is not None:
-        img = rad_med( img, R, rbins, nsigs)
-    else:
+        show, boolean, if not working in pylab interactive mode, 
+            set True to display image
+
+        pause, if working in pylab .draw()  (e.g. psuedo interactive)
+            then set to some float value (seconds)
+            the plot will pause for this long after drawing...
+        """
+        if pk_par is not None:
+            self.set_pk_par( pk_par)
+
         m = img[ img > 0].mean()
-        s = img[ img > 0].std()
-        img[ img < m + nsigs*s] = 0
-    
-    if sig_G is not None:
-        img = gaussian_filter( img, sig_G)
-    
-    lab_img, nlab = measurements.label(detect_peaks(img))
-    
-    if peak_COM:
-        pos = measurements.center_of_mass( img, lab_img , np.arange( nlab)+1 )
-        intens = measurements.maximum( img, lab_img, np.arange( nlab)+1) 
-    else:
-        pos = measurements.maximum_position( img, lab_img , np.arange( nlab)+1 )
-        intens = measurements.maximum( img, lab_img, np.arange( nlab)+1) 
+        s = img[img > 0].std()
         
-    good = [ i for i,p in enumerate(pos) if intens[i] > thresh]
-    pos = [ pos[i] for i in good]
-    intens = [ intens[i] for   i in good]
-
-    if not pos:
-        return [],[]
-    if r_in is not None or r_out is not None:
-        assert( cent is not None)
-        y = np.array([ p[0] for p in pos ]).astype(float)
-        x = np.array([ p[1] for p in pos ]).astype(float)
-        r = np.sqrt( (y-cent[1])**2 + (x-cent[0])**2)
+        ax.imshow( img, vmax=m+5*s, vmin=m-s,  **kwargs) 
         
-        if r_in is not None and r_out is not None:
-            
-            if r_in > r_out:
-                inds = np.logical_and( r > r_out,  r < r_in)
-                inds = np.where( inds)[0]
-            else:
-                inds = np.logical_or( r > r_out, r < r_in)
-                inds = np.where( inds)[0]
+        pos, intens = self.pk_pos()
+
+        for cent in pos:
+            circ = plt.Circle(xy=(cent[1], cent[0]), radius=3, ec='r', fc='none',lw=1)
+            ax.add_patch(circ)
+        if show:
+            plt.show()
+        elif pause is not None:
+            plt.draw()
+            plt.pause(pause)
         
-        elif r_in is not None and r_out is None:
-            inds = np.where( r < r_in )[0]
-        
-        elif r_out is not None and r_in is None:
-            inds = np.where( r > r_out)[0]
-        
-        if inds.size:
-            pos = [pos[i] for i in inds]
-            intens = [intens[i] for i in inds]  
-        else:
-            return [],[]
-    
-    npeaks =len(pos)
-    if not pos:
-        return [],[]
-    if min_dist and npeaks>1:
-        YXI = np.hstack( (pos, np.array(intens)[:,None]))
-        K = cKDTree( YXI[:,:2])        
-        pairs = np.array(list( K.query_pairs( min_dist)))
-        while pairs.size:
-            smaller = YXI[:,2][pairs].argmin(1)
-            inds = np.unique( [ pairs[i][l] for i,l in enumerate(smaller)] )
-            YXI = np.delete(YXI, inds, axis=0)
-            K = cKDTree( YXI[:,:2]  )
-            pairs = np.array(list( K.query_pairs( min_dist)))
-
-        pos = YXI[:,:2]
-        intens = YXI[:,2]
-    if filt:
-        new_pos = []
-        new_intens =  []
-        ypos,xpos = map( np.array, zip(*pos) )
-        SubImg = streaks.SubImages(img_.copy(), ypos,  
-            xpos, sz=sz,mask=mask, cent=cent)
-        
-        for i_s, s in enumerate(SubImg.sub_imgs):
-            if not s.img.size: # NOTE: do I still need this??
-                continue
-            
-            
-            nconn = streaks.get_nconn_snr_img(s,min_snr)
-            
-            if nconn < 1:
-                continue
-
-            if nconn < min_conn:
-                continue
-            if nconn > max_conn:
-                continue
-
-            new_pos.append( pos[i_s] )
-            new_intens.append( intens[ i_s] )
-        
-        pos = new_pos
-        intens = new_intens
-    
-    return pos, intens
-
-
-
-
-
-

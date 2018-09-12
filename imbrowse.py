@@ -1,6 +1,7 @@
 """
 classes for navigating through a series of images
 """
+
 try: 
     import Tkinter as tk
     import tkFileDialog
@@ -9,11 +10,12 @@ except ImportError:
     from tkinter import filedialog as tkFileDialog
 
 import glob
+from matplotlib.collections import PatchCollection
 
 import numpy as np
 import h5py
 
-from ImageViewer import ImageViewer
+from zoomIm5 import ImageViewer
 
 frpk = {'padx': 5, 'pady': 5}
 btnstyle = {'highlightbackground':'black'}
@@ -57,6 +59,7 @@ class multi_h5s_img:
 
 class BrowseImages:
     """a high level class for browsing images"""
+    
     def __init__( self , master,  increment_function, how="files", 
                 h5_fnames=None, h5_images_path=None, 
                 psana_run_number=None, psana_event_number=None ,
@@ -94,23 +97,24 @@ class BrowseImages:
        
         self._image_nav_buttons()
 
+
     def _set_idx_fname_path(self):
         self.idx = self.indices[self.counter]
 
-    
     def _set_image(self, init=False):
         dset = self.imgs 
-        self.img = dset[self.idx]  
         if init:
             if self.image_frame is None:
                 self.im_view_fr= tk.Toplevel(self.master)
-                self.im_view_fr.resizable(False,False)
+                #self.im_view_fr.resizable(False,False)
             else:
                 self.im_view_fr = self.image_frame
-            self.IV = ImageViewer(self.im_view_fr, self.img, attached=False) 
+            self.IV = ImageViewer(self.im_view_fr, dset[self.idx]) 
             self.IV.pack( expand=tk.NO)
             self.fig = self.IV.fig
             self.ax = self.IV.ax
+        else:
+            self.IV.img = dset[self.idx]
 
     def _set_xy_limits(self):
         xl = self.ax.get_xlim()
@@ -120,11 +124,28 @@ class BrowseImages:
 
     def _remove_patches(self, patches):
         for p in patches:
-            self.ax.patches.remove(p)
+            #self.IV.ax.patches.remove(p)
+            p.remove() #self.IV.ax.remove(p)
+    
+    def _remove_patch_collections(self, label=None):
+        if label is None:
+            return
+        for p in self.IV.ax.collections:
+            if p.get_label()==label:
+                p.remove()
+                print("Removed %s from axis"%label)
+                break
         
-    def _add_patches( self, patches):
-        for p in patches:
-            self.ax.add_patch( p)
+    def _add_patches( self, patches, label=None, **kwargs):
+        pc = PatchCollection( patches, label=label, **kwargs)
+        self.IV.ax.add_collection( pc)
+        
+        #self.IV._im.figure.canvas.draw()
+        #print self.IV.ax.patches 
+        #self.IV.fig.canvas.draw()
+        #self.IV.update_master_image()
+        #self.IV.fig.canvas.blit(self.ax.bbox)
+        #self.IV.fig.canvas.flush_events()
 
     def _image_nav_buttons(self):
 

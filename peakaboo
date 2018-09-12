@@ -4,7 +4,6 @@ from __future__ import absolute_import
 import warnings
 warnings.filterwarnings("ignore")
 
-
 try: 
     import Tkinter as tk
     import tkFileDialog
@@ -27,8 +26,12 @@ import os
 import pandas
 import h5py
 import numpy as np
-
 import peaks
+
+import matplotlib as mpl
+mpl.use('TkAgg')
+
+import pylab as plt
 
 from LineViewer import LineViewer
 
@@ -78,16 +81,17 @@ class Peakaboo(tk.Frame):
 
 #       attributes
         self.too_many_peaks_val = 1000
-        self.show_radial_bins = False
         self.radial_bin_circles = []
         self.radial_bins = []
-        self.BASE_MASK = None
         self.viewing_radpro=False
         self.showing_mask=False
         self.circ_color=circ_color
         self.Num_peaks = 0
+        
+        self.BASE_MASK = 1
         self.MASK_SCALED = 1
         self.MASK_BEAM = 1
+        
         self.found_circs = []
         self.peakaboo=False
         self.mask_join = np.logical_and
@@ -140,7 +144,7 @@ class Peakaboo(tk.Frame):
         self._make_mask_dilation_widgets()
         
 #       center / geometry stuff
-        self.CENT = (self.browser.img.shape[1]/2., self.browser.img.shape[0]/2.)
+        self.CENT = (self.browser.IV.img.shape[1]/2., self.browser.IV.img.shape[0]/2.)
         self._set_R()
         self._detector_center_widgets()
         self._set_info_panel()
@@ -174,7 +178,6 @@ class Peakaboo(tk.Frame):
         self.imageops_frame.pack( side=tk.TOP)
 
     def _make_imageops_frame_widgets(self):
-        #self._make_gauss_blur_toggle_widget()
         self._make_filters_frame()
         self._make_gaussian_filter_scale()
         self._make_radpro_button()
@@ -201,10 +204,10 @@ class Peakaboo(tk.Frame):
         if self.show_gauss_blur_var.get()==1:
             self.browser.IV.set_data( self.PK_IMG.img)
         else:
-            self.browser.IV.set_data( self.browser.img)
+            self.browser.IV.set_data( self.browser.IV.img)
 
     def _setup_peakaboo_image_class(self):
-        self.PK_IMG = peaks.PeakabooImage( PK_PAR, self.browser.img.shape, how_to_section=None)
+        self.PK_IMG = peaks.PeakabooImage( PK_PAR, self.browser.IV.img.shape, how_to_section=None)
 
     def _make_radial_sectioning_frame(self):
         self.radsectioning_frame = tk.Frame( self.sectioning_frame, bg='black', padx=5, pady=5,
@@ -218,9 +221,8 @@ class Peakaboo(tk.Frame):
         self.nb.pack( side=tk.TOP, expand=tk.YES)
         self.info_frame.pack( side=tk.TOP, expand=tk.YES, fill=tk.X)
 
-
     def _set_window_titles(self):
-        self.browser.IV.image_frame.title("Peakaboo image")
+        self.browser.IV.image_frame.master.title("Peakaboo image")
         self.browser.im_view_fr.title("Peakaboo image range slider")
     
     def _set_info_frame(self):
@@ -230,6 +232,11 @@ class Peakaboo(tk.Frame):
         self._hover_message( self.browser.IV.range_slider.entry_maxval,  "maximum color scale" )
         self._hover_message( self.browser.IV.range_slider.entry_minval,  "minimum color scale" )
         self._hover_message( self.browser.IV.range_slider.canvas,  "adjust color scale" )
+        
+        self._hover_message( self.peakaboo_button, "Peakaboo: Click to detect peaks")
+        self._hover_message( self.save_param_button, "Save peak parameters to hdf5")
+        self._hover_message( self.load_param_button, "Load peak parameters from hdf5")
+        self._hover_message( self.hide_peaks_button, "Stop detecting peaks")
 
     def _make_peak_detection_frame(self):
         self.peak_detection_frame = tk.Frame(self.nb,  bg='black', highlightbackground="#00fa32", 
@@ -276,6 +283,7 @@ class Peakaboo(tk.Frame):
         self.peakaboo=False
         self._update_browser()
 
+    
     def _radial_bins_from_entry(self):
        
         radial_bin_str = self.radial_bin_var.get()
@@ -307,31 +315,37 @@ class Peakaboo(tk.Frame):
 
     def _reset_radial_bins( self, ):
         
-        while self.radial_bin_circles:
-            circ = self.radial_bin_circles.pop()
-            if circ in self.browser.IV.ax.patches: 
-                self.browser.IV.ax.patches.remove(circ)
-
+        self.browser._remove_patch_collections(label="radial_bin_circles")
+        self.radial_bin_circles = []
+        #while self.radial_bin_circles:
+        #    circ = self.radial_bin_circles.pop()
+        #    if circ in self.browser.IV.ax.patches: 
+        #        self.browser.IV.ax.patches.remove(circ)
+        x = self.CENT[0]/self.browser.IV.binning_factor
+        y = self.CENT[1] / self.browser.IV.binning_factor
         for r in self.radial_bins:
-            circ = mpl.pyplot.Circle(xy=(self.CENT[0],self.CENT[1]), radius=r, fc='none', ec='w', ls='dashed', lw=2)
+            circ = mpl.pyplot.Circle(xy=(x,y),
+                radius=r/self.browser.IV.binning_factor, 
+                fc='none', ec='w', ls='dashed', lw=2)
             self.radial_bin_circles.append( circ)
         
         self._show_radial_bins()
 
-
     def _hide_radial_bins(self):
-        for circ in self.radial_bin_circles:
-            if circ in self.browser.IV.ax.patches:
-                self.browser.IV.ax.patches.remove(circ)
-        self.browser.IV.fig.canvas.draw()
+        self.browser._remove_patch_collections( label="radial_bin_circles")
+        self.browser.IV.update_master_image()
+        
         self.show_rbins=False
 
-
     def _show_radial_bins(self):
-        for circ in self.radial_bin_circles:
-            if circ not in self.browser.IV.ax.patches:
-                self.browser.IV.ax.add_patch( circ)
-        self.browser.IV.fig.canvas.draw()
+        self.browser._add_patches(self.radial_bin_circles, label="radial_bin_circles", 
+            facecolor='none', edgecolor='w', linestyle='dashed', linewidth=2)
+        self.browser.IV.update_master_image()
+        #for circ in self.radial_bin_circles:
+        #    if circ not in self.browser.IV.ax.patches:
+        #        self.browser.IV.ax.add_patch( circ)
+        
+        #self.browser.IV.fig.canvas.draw()
         self.show_rbins=True
 
     def _set_radial_bin_widgets(self):
@@ -369,7 +383,7 @@ class Peakaboo(tk.Frame):
             self.launch_warning("You must install LOKI before viewing radial profiles!")
             return
         
-        radpro_yvals = self.radpro_maker.calculate( self.browser.img)
+        radpro_yvals = self.radpro_maker.calculate( self.browser.IV.img)
         
         self.radpro_fr = tk.Toplevel(self.master)
         #if self.radpro_var.get():
@@ -383,7 +397,7 @@ class Peakaboo(tk.Frame):
         self.viewing_radpro = True
 
     def _update_radpro(self):
-        radpro_yvals = self.radpro_maker.calculate( self.browser.img)
+        radpro_yvals = self.radpro_maker.calculate( self.browser.IV.img)
         line_data=(self.radpro_xvals, radpro_yvals)
         self.LV.update_data( line_data)
         self.LV.canvas.draw()
@@ -392,9 +406,9 @@ class Peakaboo(tk.Frame):
         if has_loki:
             self.radpro_maker = RadialProfile( 
                 center=self.CENT,
-                img_shape = self.browser.img.shape, 
+                img_shape = self.browser.IV.img.shape, 
                 mask=PK_PAR["mask"], 
-                minlength=  10+ int( np.sqrt( self.browser.img.shape[0]**2 + self.browser.img.shape[1]**2)) ) 
+                minlength=  10+ int( np.sqrt( self.browser.IV.img.shape[0]**2 + self.browser.IV.img.shape[1]**2)) ) 
             
             self.radpro_xvals = np.arange( self.radpro_maker.minlength )
 
@@ -406,7 +420,7 @@ class Peakaboo(tk.Frame):
         
         color={"foreground":"#00fa32", "background":"black"}
         font = 'Helvetica 10'
-        tk.Label(fr, text="Detector shape (ss,fs)=%d,%d"%(self.browser.img.shape[0],self.browser.img.shape[1]),font=font, **color)\
+        tk.Label(fr, text="Detector shape (ss,fs)=%d,%d"%(self.browser.IV.img.shape[0],self.browser.IV.img.shape[1]),font=font, **color)\
             .pack( side=tk.TOP)
         self.center_lab_text = "Detector center (ss,fs)=%d,%d"
         self.center_lab = tk.Label(fr, text=self.center_lab_text%(self.CENT[1], self.CENT[0]), font=font, **color)
@@ -482,44 +496,47 @@ class Peakaboo(tk.Frame):
         except:
             self.launch_warning( "%s is not a numpy binary!"%npy_file )
             NPY = None
-        if NPY.shape != self.browser.img.shape:
-            self.launch_warning( "Shape mis-align: %s (%d,%d) and img (%d,%d)!"%(obj_name, NPY.shape[0], 
-                NPY.shape[1], self.browser.img.shape[0], self.browser.img.shape[1]) )
-            NPY= None
+        
+        if type(NPY) == np.ndarray:
+            if NPY.shape != self.browser.IV.img.shape:
+                self.launch_warning( "Shape mis-align: %s (%d,%d) and img (%d,%d)!"%(obj_name, NPY.shape[0], 
+                    NPY.shape[1], self.browser.IV.img.shape[0], self.browser.IV.img.shape[1]) )
+                NPY= None
         return npy_file, NPY 
     
-    def _show_mask( self):
-        if self.BASE_MASK is not None:
-            mask = self.mask_join( self.BASE_MASK, self.MASK_SCALED) * self.MASK_BEAM
-        else:
-            mask = self.MASK_BEAM
-        
-        self.browser.IV.set_data( self.browser.img * mask)
-        self.browser.IV.fig.canvas.draw()
+    def _show_img_with_mask( self):
         self.showing_mask=True
-        #else:
-        #    self.launch_warning("Mask is set to None! Try loading a numpy array")
+
+        mask = self.mask_join( self.BASE_MASK, self.MASK_SCALED) * self.MASK_BEAM
+        
+        self.browser.IV.set_data( self.browser.IV.img , mask=mask)
+        self.browser.IV.fig.canvas.draw()
     
     def _hide_mask( self):
-        self.browser.IV.set_data( self.browser.img )
+        self.browser.IV.set_data( self.browser.IV.img )
         self.browser.IV.fig.canvas.draw()
         self.showing_mask=False
 
     def _load_mask_from_file(self):
         self.mask_file, self.BASE_MASK = self._load_numpy_binary("MASK")
-        
+       
+        if self.BASE_MASK is None:
+            self.BASE_MASK = 1
+
         if has_loki: 
             self._set_radpro_maker()
             if self.viewing_radpro:
                 self._update_radpro()
-        self.mask_loaded_label.config(text="%s"%os.path.basename(self.mask_file))
+        
+        #self.mask_loaded_label.config(text="%s"%os.path.basename(self.mask_file))
 
         self._set_new_mask()
 
     def _save_mask(self):
-        if self.BASE_MASK is None and self.MASK_BEAM ==1:
-            self.launch_warning("No mask loaded")
-            return
+        #if self.BASE_MASK is None and self.MASK_BEAM ==1:
+        #    self.launch_warning("No mask loaded")
+        #    return
+        
         fname = tkFileDialog.asksaveasfilename(defaultextension=".npy")
         if fname=="":
             return
@@ -529,14 +546,14 @@ class Peakaboo(tk.Frame):
     def _set_R(self):
         #self.R_file, self.R = self._load_numpy_binary("Rpixels")
         
-        Yvals, Xvals = np.indices( self.browser.img.shape)
+        Yvals, Xvals = np.indices( self.browser.IV.img.shape)
         self.R = np.sqrt( (Yvals-self.CENT[1])**2 + (Xvals-self.CENT[0])**2 ) 
         PK_PAR["R"] = self.R
 
     def _update_beam_mask(self, scale):
         scale = int(scale)
         self.MASK_BEAM = self.R > scale
-        self._show_mask()
+        self._show_img_with_mask()
 
     def _make_gaussian_filter_scale(self):
         
@@ -551,9 +568,14 @@ class Peakaboo(tk.Frame):
         self.gauss_filt_scale.pack(side=tk.TOP, pady=5)
 
     def _set_gaussian_filter_value(self, scale_factor):
+        
         scale_factor = float( scale_factor)
         PK_PAR['sig_G'] = scale_factor
-        self.browser.IV.set_data( gaussian_filter( self.browser.img, scale_factor) )
+
+        new_mask = self.mask_join( self.BASE_MASK, self.MASK_SCALED )*self.MASK_BEAM
+        img = new_mask * self.browser.IV.img
+        
+        self.browser.IV.set_data( gaussian_filter( img, scale_factor) )
         self.pk_par_vars["sig_G"].set( str(scale_factor))
 
     def _make_mask_dilation_widgets(self):
@@ -572,20 +594,18 @@ class Peakaboo(tk.Frame):
 
 
     def _set_new_mask(self):
-        if self.BASE_MASK is not None:
-            new_mask = self.mask_join( self.BASE_MASK, self.MASK_SCALED )*self.MASK_BEAM
-        else:
-            new_mask = self.MASK_BEAM
+        new_mask = self.mask_join( self.BASE_MASK, self.MASK_SCALED )*self.MASK_BEAM
+        
+        #else:
+        #    new_mask = self.MASK_BEAM
 
         PK_PAR["mask"] = new_mask
         self.PK_IMG.set_mask( new_mask)
         self.PK_IMG.reset_sectioning()
-        #else:
-        #    self.launch_warning("No base mask set.. Load numpy array mask")
 
     def _update_mask(self, scale_factor):
         scale_factor = int(scale_factor)
-        if self.BASE_MASK is not None:
+        if type(self.BASE_MASK)==np.ndarray:
             lognot = np.logical_not
             if scale_factor > 0:
                 self.MASK_SCALED = lognot(binary_dilation( lognot(self.BASE_MASK), iterations=scale_factor)) 
@@ -597,7 +617,7 @@ class Peakaboo(tk.Frame):
                 self.MASK_SCALED=1
                 self.mask_join = np.logical_and
             
-            self._show_mask()
+            self._show_img_with_mask()
 
     def _mask_loader(self):
         fr = tk.Frame(  self.mask_frame, bg='black', padx=3, pady=3,highlightbackground="#00fa32", highlightthickness=2)
@@ -623,10 +643,8 @@ class Peakaboo(tk.Frame):
             .pack(side=tk.LEFT, fill=tk.X, expand=tk.YES)
        
         
-        #mask_display_fr = tk.Frame( fr, bg='black')
-        #mask_display_fr.pack(side=tk.TOP)
-        #tk.Label(mask_load_fr, text="Mask display",fg="#00fa32", bg='black' ).pack(side=tk.LEFT)
-        tk.Button(mask_load_fr, text="Show" , relief=tk.RAISED, highlightbackground="black", command=self._show_mask)\
+        tk.Button(mask_load_fr, text="Show" , relief=tk.RAISED, highlightbackground="black", 
+            command=self._show_img_with_mask)\
             .pack(side=tk.LEFT,expand=tk.YES, fill=tk.X)
         tk.Button(mask_load_fr, text="Hide" , relief=tk.RAISED, highlightbackground="black", command=self._hide_mask)\
             .pack(side=tk.LEFT, expand=tk.YES,fill=tk.X)
@@ -688,10 +706,14 @@ class Peakaboo(tk.Frame):
             self.pk_par_vars[e].set( int(PK_PAR[e]) ) 
             
 
-    def launch_warning(self, proc_mssg):
+    def launch_warning(self, proc_mssg, timeout=False):
         warningWindow = tk.Toplevel(self.master)
+
         tk.Label(warningWindow, text=proc_mssg, background='red', foreground='white', font='BOLD' ).pack()
-        tk.Button( warningWindow, text='OK',command=warningWindow.destroy, relief=tk.RAISED,font='BOLD' ).pack()
+        if timeout:
+            self.master.after( 1000, lambda: warningWindow.destroy() ) 
+        else:
+            tk.Button( warningWindow, text='OK',command=warningWindow.destroy, relief=tk.RAISED,font='BOLD' ).pack()
 
     def _make_peakaboo_inputs(self):
         self.number_entries = {  "sig_G":float, "nsigs":float, 
@@ -734,13 +756,9 @@ class Peakaboo(tk.Frame):
         def disable_snr_buttons():
             if self.pk_par_vars["filt"].get()==0:
                 self.all_number_entry_widgets["min_snr"].config(state=tk.DISABLED)
-                #self.all_number_entry_widgets["min_conn"].config(state=tk.DISABLED)
-                #self.all_number_entry_widgets["max_conn"].config(state=tk.DISABLED)
                 self.all_number_entry_widgets["sz"].config(state=tk.DISABLED)
             else:
                 self.all_number_entry_widgets["min_snr"].config(state=tk.NORMAL)
-                #self.all_number_entry_widgets["min_conn"].config(state=tk.NORMAL)
-                #self.all_number_entry_widgets["max_conn"].config(state=tk.NORMAL)
                 self.all_number_entry_widgets["sz"].config(state=tk.NORMAL)
         
         bool_cmd = {"run_rad_med": check_run_rad_med, "filt": disable_snr_buttons}
@@ -795,27 +813,32 @@ class Peakaboo(tk.Frame):
         
 #       just trying this out for fun
         self.peakaboo_button.pack(side=tk.LEFT, expand=tk.YES, fill=tk.X)
-        self._hover_message( self.peakaboo_button, "Peakaboo: Click to detect peaks")
-        #self.peakaboo_button.bind("<Enter>", lambda event,x="Peakaboo: Cick to detect peaks":self._on_enter( event,message=x))
-        #self.peakaboo_button.bind("<Leave>", self._on_leave)
 
     def _make_peakaboo_parameter_save_load_buttons(self):
         button_style = {"highlightthickness":1, "highlightbackground":"black"}
-        save_param_button = tk.Button( self.peakaboo_button_frame,  text="Save", command=self._save_peak_params, **button_style)
-        save_param_button.pack(side=tk.LEFT, fill=tk.X, expand=tk.YES)
-        load_param_button = tk.Button( self.peakaboo_button_frame ,text="Load", command=self._load_peak_params, **button_style)
-        load_param_button.pack(side=tk.LEFT, fill=tk.X, expand=tk.YES)
+        
+        self.save_param_button = tk.Button( self.peakaboo_button_frame,  
+                text="Save", command=self._save_peak_params, **button_style)
+        self.save_param_button.pack(side=tk.LEFT, fill=tk.X, expand=tk.YES)
+        
+        self.load_param_button = tk.Button( self.peakaboo_button_frame ,text="Load", command=self._load_peak_params, **button_style)
+        self.load_param_button.pack(side=tk.LEFT, fill=tk.X, expand=tk.YES)
 
-        self._hover_message(save_param_button, "Save peak parameters to hdf5")
-        self._hover_message(load_param_button, "Load peak parameters from hdf5")
+
+    def _make_quit_button(self):
+        button_style = {"highlightthickness":1, "highlightbackground":"black"}
+        self.quit_button=tk.Button(self.peakaboo_button_frame, text='Quit', command=self._close_application, **button_style)
+        self.quit_button.pack(side=tk.LEFT, fill=tk.X, expand=tk.YES)
+
+    def _close_application(self):
+        self.master.destroy()
 
     def _make_peakaboo_hidepeaks_button(self):
         button_style = {"highlightthickness":1, "highlightbackground":"black"}
-        hide_peaks_button = tk.Button( self.peakaboo_button_frame, 
+        self.hide_peaks_button = tk.Button( self.peakaboo_button_frame, 
             text="Hide", command=self._hide_peakaboo_peaks, **button_style)
-        hide_peaks_button.pack(side=tk.LEFT, expand=tk.YES, fill=tk.X)
+        self.hide_peaks_button.pack(side=tk.LEFT, expand=tk.YES, fill=tk.X)
 
-        self._hover_message( hide_peaks_button, "Stop detecting peaks")
 
     def _hover_message(self, widget, message):
         widget.bind( "<Enter>", lambda event,x=message:self._on_enter(event, message=x))
@@ -836,8 +859,10 @@ class Peakaboo(tk.Frame):
     def _set_found_circs(self):
         self.found_circs = []
         for cent in self.found_centers:
+            x = cent[1] / self.browser.IV.binning_factor
+            y = cent[0] / self.browser.IV.binning_factor
             circ = mpl.patches.Circle(
-                xy=(cent[1], cent[0]), radius=7, ec=self.circ_color, fc='none', lw=1)
+                xy=(x,y), radius=7./self.browser.IV.binning_factor, ec=self.circ_color, fc='none', lw=1)
             self.found_circs.append( circ)
     
     def _detect_peaks(self):
@@ -929,36 +954,44 @@ class Peakaboo(tk.Frame):
         
         PK_PAR["cent"] = self.CENT
         
-        self.found_centers,_ = self.PK_IMG.pk_pos( pk_par=PK_PAR, img=self.browser.img)
-       
+        print(PK_PAR)
+        self.found_centers,_ = self.PK_IMG.pk_pos( pk_par=PK_PAR, img=self.browser.IV.img)
+        
         self.Num_peaks = len(self.found_centers)
+        
         if self.Num_peaks > self.too_many_peaks_val:
-            self.launch_warning("Probably too many peaks, change parameters!")
+            self.launch_warning("Probably too many peaks, change parameters!", timeout=True)
                 
         self._set_npeaks_lab_text() 
         print("Found %d peaks"%(len(self.found_centers) ))
 
-    def _update_browser(self,):
+    def _update_browser(self):
         
         self.browser._set_idx_fname_path()
         self.browser._set_image()
         self.browser._update_img_info_text()
         
         if self.found_circs:
-            self.browser._remove_patches( patches=self.found_circs)
+            self.browser._remove_patch_collections( label="found_circs" )
             self.found_circs = []
         
         if self.peakaboo:
             self._detect_peaks() # this sets found circs 
-            self.browser._add_patches( patches=self.found_circs)
-         
-        self.browser._set_xy_limits()
-        
+            self.browser._add_patches( patches=self.found_circs, label="found_circs", edgecolor='Deeppink',
+                facecolor='none')
+             
+        #self.browser._set_xy_limits()
         if self.showing_mask:
-            self._show_mask()
+            self._show_img_with_mask()
+        else:
+            self.browser.IV.set_data( self.browser.IV.img)
         
-        self.browser.IV.fig.canvas.draw()
-
+        #self.browser.IV.update_master_image()
+        #self.browser.IV.update_zoom_image()
+        #self.browser.IV.fig.canvas.draw()
+        
+        if PK_PAR["sig_G"] is not None:
+            self._set_gaussian_filter_value(PK_PAR["sig_G"])
 
 if __name__ == '__main__':
     from argparse import ArgumentParser
@@ -969,7 +1002,6 @@ if __name__ == '__main__':
         dest='images_path',
         type=str,
         default='data')
-
 
     parser.add_argument(
         '-f, --fname',
@@ -985,9 +1017,9 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
 
-    
     root = tk.Tk()
     root.title("Peakaboo")
+    
     frame = Peakaboo(
         root,
         args.fname,
