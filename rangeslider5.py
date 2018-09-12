@@ -3,16 +3,15 @@ try:
 except ImportError:
     import tkinter as tk
 
+
+
+
 import numpy as np
 
 
 labstyle={'bg':'black', 'fg':'white'}
-
 fr = {'bg':'black'}
 frpk = {'padx':0, 'pady':0}
-
-
-
 
 class RangeSlider(tk.Frame):
     def __init__(self, master, data, color='#00fa32', 

@@ -1,4 +1,8 @@
-import Tkinter as tk
+try:
+    import Tkinter as tk
+except ImportError:
+    import tkinter as tk
+
 import matplotlib as mpl
 mpl.use('TkAgg')
 import pylab as plt
@@ -606,8 +610,6 @@ class ImageViewer(tk.Frame):
         Ymid = .5*(y1 + y2)
         Xmid = .5*(x1 + x2)
        
-        #print( width, height)
-        #print  [ int(Ymid - height/2.), int(Ymid +height/2.), int(Xmid-width/2.), int(Xmid + width/2.)]
 
 #       zoom image
         self.img_extent = ( int(Xmid-width/2.), int(Xmid + width/2.), int(Ymid - height/2.), int(Ymid +height/2.) )
