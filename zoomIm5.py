@@ -47,7 +47,7 @@ class ImageViewer(tk.Frame):
         self.scale = 1
         self.dragging_selector = True
         self.dragging_lower_right = True
-        self.mask = 1.
+        self.mask = None
 #       load the image
         self.rectprops = dict(facecolor='none', edgecolor = '#00fa32',fill=False)
         self.show_pixel_values=False
@@ -102,17 +102,17 @@ class ImageViewer(tk.Frame):
         self._widget_watcher()
     
     
-    def set_data(self, data, mask=1.):
+    def set_data(self, data, mask=None):
         self.img = data
         
         sY = slice( None, None, self.binning_factor)
         sX = slice( None, None, self.binning_factor)
-        if mask != 1.:
+        if mask is not None:
             self._im.set_data( data[sY, sX] * mask[sY, sX] )
+            self.mask = mask
         else:
             self._im.set_data( data[sY, sX])
-            
-        self.mask = mask
+            self.mask = None
 
         self._sync_zoomwindow_to_selector()
         self._zoom_im.figure.canvas.draw()
@@ -565,7 +565,7 @@ class ImageViewer(tk.Frame):
         self.img_extent = (x1,x2,y1,y2)
         sY =  slice( int(y1), int(y2), None )
         sX =  slice( int(x1), int(x2), None )
-        if self.mask != 1:
+        if self.mask is not None:
             self._zoom_im.set_data(  self.img [ sY,sX] * self.mask[sY, sX] ) 
         else:
             self._zoom_im.set_data( self.img[ sY,sX])
@@ -609,13 +609,11 @@ class ImageViewer(tk.Frame):
         sY =  slice( int(y1), int(y2), None )
         sX =  slice( int(x1), int(x2), None )
         
-        if self.mask != 1:
+        if self.mask is not None:
             self._zoom_im.set_data(  self.img [ sY,sX] * self.mask[sY, sX] ) 
         else:
             self._zoom_im.set_data( self.img[ sY,sX])
         
-        #self._zoom_im.set_data( ( self.img*self.mask) [ int(y1):int(y2), 
-        #                int(x1):int(x2)] )
         
 #       axis limitation
         #self.zoom_ax.set_xlim(x1,x2)
@@ -648,7 +646,7 @@ class ImageViewer(tk.Frame):
        
         sY =  slice( int(y1), int(y2), None )
         sX =  slice( int(x1), int(x2), None )
-        if self.mask != 1:
+        if self.mask is not None:
             self._zoom_im.set_data(  self.img [ sY,sX] * self.mask[sY, sX] ) 
         else:
             self._zoom_im.set_data( self.img[ sY,sX])
