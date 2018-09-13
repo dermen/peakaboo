@@ -17,8 +17,85 @@ import h5py
 
 from zoomIm5 import ImageViewer
 
+try:
+    import psana
+    has_psana = True
+except ImportError:
+    has_psana = False
+    print("Did not find psana; call peakaboo with a psana python distribution.")
+
 frpk = {'padx': 5, 'pady': 5}
 btnstyle = {'highlightbackground':'black'}
+
+
+class PsanaImages:
+    def __init__(self, exp, run, detector_name, N_events=100, codes=None):
+        """
+        exp: experiment string
+        run: run number
+        detector_name: detecrtor string
+        N_events: interact w this many events , up to total events in run
+            if -1, processes all events found
+        """
+        assert( has_psana)
+       
+        self.run = run
+        self.exp = exp
+        self.N_events = N_events
+        self.codes = codes
+        self.ds = psana.DataSource("exp=%s:run=%s"%(exp,run))
+        self.detnames = [ d for sl in psana.DetNames() for d in sl]
+        self.env = self.ds.env()
+        
+        assert(  detector_name  in self.detnames)
+       
+        code_dets = [ psana.Detector(d, env) for d in detnames if d.startswith("evr") ]
+        
+        self.events = ds.events() #this is a generator!
+
+        self.detector_name = detector_name
+        self.detector = psana.Detector( self.detector_name, self.env)
+
+        psana.Detector("DsdCsPad", env)
+
+        self.event = self.events.next()
+        self.event_index = 0
+
+    def __getitem__(self, i):
+        """
+        only allow forward indexing of psana events... for now
+        """
+        assert( self.event_index <= i)
+        
+        while self.event_index < i:
+            self.event = self.events.next()
+            if self.event is None:
+                continue
+            self.event_index += 1
+        return self._get_image()
+
+
+    def _get_image( self):
+        self.codes = []
+        for cdet in self.code_dets:
+            c = det.eventCodes(self.event)
+            if c is not None:
+                codes += c
+        self.event_codes = list(set( self.codes))
+        self.evr_str = " ".join([str(c) for c in self.event_codes ])
+        self.filename_i = "run: %d; exp: %s; evr: %s"%(self.run, self.exp, self.evr_str )
+        self.shot_i = self.event_index
+        self.N_i = self.N_events
+
+        img = self.Detector.image( self.event)
+        if img is None:
+            self.filename_i = "Nonetype image"
+            img = np.zeros( (1000,1000))
+        else:
+            self.filename_i = "run: %d; exp: %s; evr: %s"%(self.run, self.exp, self.evr_str )
+        
+        return img
+        
 
 class multi_h5s_img:
     """this class takes a list ofhdf5 filenames with image data
@@ -62,7 +139,8 @@ class BrowseImages:
     
     def __init__( self , master,  increment_function, how="files", 
                 h5_fnames=None, h5_images_path=None, 
-                psana_run_number=None, psana_event_number=None ,
+                psana_run_number=None, psana_experiment_name=None , 
+                psana_detector_name=None, 
                 image_nav_frame=None, image_frame=None, image_strides = None):
 
         if image_strides is None:
@@ -85,7 +163,10 @@ class BrowseImages:
         
         elif how =='psana':
             assert( psana_run_number is not None)
-            assert( psana_event_number is not None)
+            assert( psana_experiment_name is not None)
+            assert( psana_detector_name is not None)
+            self.imgs = PsanaImages( psana_experiment_name, 
+                psana_run_number, psana_detector_name) 
 
         self.counter = 0
         self.indices = np.arange( self.imgs.N)
@@ -183,7 +264,7 @@ class BrowseImages:
     def _next(self, increment):
         self.counter += increment
         if self.counter >= len(self.indices):
-            self.counter = self.counter - increment
+            #self.counter = self.counter - increment
             self.counter = len( self.indices)-1 
         self.inc_func()    
 

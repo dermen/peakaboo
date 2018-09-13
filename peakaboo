@@ -69,8 +69,9 @@ PK_PAR =  { 'make_sparse':True,# leave true..
 
 class Peakaboo(tk.Frame):
     
-    def __init__(self, master, cxi_fname, image_path, circ_color='Limegreen',
-                    *args, **kwargs):
+    def __init__(self, master, cxi_fname=None, image_path=None, 
+                    run=None, experiment=None, detector=None,
+                    circ_color='Limegreen', how="files", *args, **kwargs):
         
         tk.Frame.__init__(self, *args, **kwargs)
         
@@ -100,11 +101,15 @@ class Peakaboo(tk.Frame):
 #       image browser
         self.nav_frame = tk.Frame( self.nb, bg="black", highlightbackground="#00fa32", highlightthickness=1)
         self.nav_frame.pack( side=tk.TOP, expand=tk.NO)        
-        self.browser = imbrowse.BrowseImages( self.master, 
+        self.browser = imbrowse.BrowseImages( 
+            self.master, 
             increment_function=self._update_browser, 
-            how='files', 
+            how=how, 
             h5_fnames =cxi_fname, 
             h5_images_path=image_path,
+            psana_experiment_name=experiment,
+            psana_run_number=run,
+            psana_detector=detector,
             image_nav_frame=self.nav_frame,
             image_frame=None)
 
@@ -1062,6 +1067,24 @@ if __name__ == '__main__':
         default=None)
     
     parser.add_argument(
+        '-r',
+        dest='run',
+        type=int, help='psana run number'
+        default=None)
+    
+    parser.add_argument(
+        '--detector',
+        dest='detector',
+        type=str, help='psana detector string'
+        default="DsaCsPad")
+    
+    parser.add_argument(
+        '--experiment',
+        dest='experiment',
+        type=str, help='psana experiment string'
+        default="cxilu5617")
+    
+    parser.add_argument(
         '--circ-color',
         dest='circ_color',
         type=str,
@@ -1069,15 +1092,29 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
 
+    if args.run is not None:
+        how = 'psana'
+    else:
+        how = 'files'
+
     root = tk.Tk()
     root.title("Peakaboo")
     
     frame = Peakaboo(
         root,
-        args.fname,
-        args.images_path,
+        cxi_fname=args.fname,
+        images_path=args.images_path,
+        run = args.run,
+        experiment=args.experiment,
+        detector=args.detector,
         circ_color=args.circ_color,
-        bg='black')
+        how = how,
+        bg='black' )
+    
+    def __init__(self, master, cxi_fname=None, image_path=None, 
+                    run=None, experiment=None, detector=None,
+                    circ_color='Limegreen', how="files", *args, **kwargs):
+        
     frame.pack( side=tk.TOP, expand=tk.YES)
     root.mainloop()
 
