@@ -1,0 +1,172 @@
+#!/usr/bin/python
+
+import glob
+import json
+import argparse
+import pylab as plt
+import sys
+import os
+import numpy as np
+import glob
+import h5py
+from joblib import Parallel, delayed
+import time
+
+import peaks
+
+#############
+#plot=args.plot
+######################
+
+class Logger(object):
+    def __init__(self, log_f):
+        self.terminal = sys.stdout
+        self.log = open(log_f, "a")
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)  
+
+    def flush(self):
+        pass
+
+def main(fname, inds, JID, data_path, pk_par_fname):
+
+    PK_PAR = peaks.load_peak_param_file( pk_par_fname)
+    
+    if PK_PAR['mask'] is not None:
+        MASK = PK_PAR['mask']
+    else:
+        MASK = 1
+    log_s=""
+#   one day ill log, for now... 
+    if JID==0:
+        print ("\n============================", PK_PAR, "\n==========================")
+    H = h5py.File(fname, 'r')
+    
+    img_sh = list(H[data_path].shape)[-2:]
+    
+    PK_IMG = peaks.PeakabooImage( PK_PAR, img_sh )
+    
+    out = {"X":[], "Y":[] , "I":[], "fname":[], "dset_ind":[] }
+    for counter, i in enumerate(inds):
+        #fname, dset_ind, img = ALL_IMGS[i]
+        img = H[data_path][i] 
+        
+
+        pk_pos, pkI = PK_IMG.pk_pos(img=img)
+        npks = len( pk_pos)
+        if npks ==0 :
+            #print("BOOOS, found no peaks in %s, index %d"%(fname, i))
+            s ="BOOOS, found no peaks in %s, index %d\n"%(fname, i)
+            log_s += s
+            print(s)
+            pkY, pkX, pkI = [0],[0], [0]
+
+        else:
+            pkY,pkX = map(np.array, zip(*pk_pos))
+        
+        s ="Job %d; img %d / %d; iteration %d; fname %s; found %d pks\n"%(JID, counter+1, len(inds), i,  fname, len(pkI))  
+        log_s += s
+        print(s) 
+        out['X'].append(pkX) # .append( [pkY, pkX, pkI, fname, dset_ind] )
+        out['Y'].append(pkY)
+        out['I'].append(pkI)
+        out['dset_ind'].append( i)
+
+    return out, log_s
+
+def write_cxi_peaks( h5, peaks_path, pkX, pkY, pkI):
+    assert( len(pkX) == len( pkY) == len( pkI) )
+    
+    npeaks = np.array( [len(x) for x in pkX] )
+    max_n = max(npeaks)
+    Nimg = len( pkX)
+    
+    data_x = np.zeros((Nimg, max_n), dtype=np.float32)
+    data_y = np.zeros_like(data_x)
+    data_I = np.zeros_like(data_x)
+
+    for i in xrange( Nimg):
+        n = int( npeaks[i] )
+        data_x[i,:n] = pkX[i]
+        data_y[i,:n] = pkY[i]
+        data_I[i,:n] = pkI[i]
+    
+    peaks = h5.create_group(peaks_path)
+    peaks.create_dataset( 'nPeaks' , data=npeaks)
+    peaks.create_dataset( 'peakXPosRaw', data=data_x )
+    peaks.create_dataset( 'peakYPosRaw', data=data_y )
+    peaks.create_dataset( 'peakTotalIntensity', data=data_I ) 
+
+if __name__ == "__main__":
+    #fnames = glob.glob("./run*/*.cxi")
+   
+    from argparse import ArgumentParser
+    parser = ArgumentParser(
+        description='')
+    parser.add_argument(
+        '-data',
+        dest='images_path',
+        type=str,
+        default='data', help='path to images in hdf5 file')
+
+    parser.add_argument(
+        '-p, --peaks-path',
+        dest='peaks_path',
+        type=str,
+        default='peaks', help='Path where peak data will be written in CXIDB format' )
+
+    parser.add_argument(
+        '-f, --fname',
+        dest='fname',
+        type=str,
+        default=None, help="hdf5 input file")
+    
+    parser.add_argument(
+        '-j', dest='n_jobs',
+        type=int, default=1, help='number of jobs')
+
+    parser.add_argument('--pk-param-file', 
+        dest='PK_PAR', required=True, 
+        type=str, help="Path to hdf5 peak parameter file")
+
+    args = parser.parse_args()
+
+
+    fname = args.fname
+    data_path = args.images_path
+    n_jobs = args.n_jobs
+    new_pk = args.peaks_path
+    
+    sys.stdout = Logger("a2a_1920x1920.log")
+    
+    h5 = h5py.File(fname,'r')
+    N = h5[data_path].shape[0]
+    inds = np.arange(N)
+    h5.close()
+
+    print("Found %d files and %d total hits"%( 1, N) )
+    inds_split = np.array_split( inds, n_jobs)
+    
+    results = Parallel(n_jobs=n_jobs)( delayed(main)(fname, inds_split[JID], JID, data_path, args.PK_PAR) \
+        for JID in range( n_jobs))
+
+    for out,log_s in results:
+        print(log_s)
+
+    # write the results
+    with h5py.File( fname, 'r+')  as open_file:
+
+        all_X = [out['X'] for out,_ in results ]
+        all_Y = [out['Y'] for out,_ in results ]
+        all_I = [out['I'] for out,_ in results ]
+        
+        inds = np.hstack( [ out['dset_ind'] for out,_ in results] )
+      
+        all_X = [x for sl in all_X for x in sl]
+        all_Y = [x for sl in all_Y for x in sl]
+        all_I = [x for sl in all_I for x in sl]
+
+        write_cxi_peaks( open_file, new_pk, all_X,all_Y,all_I)
+
