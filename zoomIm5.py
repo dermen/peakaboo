@@ -153,9 +153,14 @@ class ImageViewer(tk.Frame):
         #self.master.bind_all("<MouseWheel>", self._on_mousewheel)
         
         self.master.bind_all("<Command-z>", self._zoom_in)
+        self.master.bind_all("<Alt-z>", self._zoom_in)
+        
         self.master.bind_all("<Command-Shift-z>", self._zoom_out)
+        self.master.bind_all("<Alt-Z>", self._zoom_out)
+        self.master.bind_all("<Control-Shift-z>", self._zoom_out)
        
         self.master.bind_all("<Command-w>", self._keyboard_quit) 
+        self.master.bind_all("<Alt-w>", self._keyboard_quit) 
 
         self.master.bind_all("<Shift-Left>", self._move_left)
         self.master.bind_all("<Shift-Right>", self._move_right)
@@ -166,6 +171,10 @@ class ImageViewer(tk.Frame):
         self.master.bind_all( "<Command-Left>", self._compress_X)
         self.master.bind_all( "<Command-Down>", self._expand_Y)
         self.master.bind_all( "<Command-Up>", self._compress_Y)
+        self.master.bind_all( "<Alt-Right>", self._expand_X)
+        self.master.bind_all( "<Alt-Left>", self._compress_X)
+        self.master.bind_all( "<Alt-Down>", self._expand_Y)
+        self.master.bind_all( "<Alt-Up>", self._compress_Y)
 
         self.master.bind_all("<Left>", self._move_left_slow)
         self.master.bind_all("<Right>", self._move_right_slow)
@@ -354,25 +363,31 @@ class ImageViewer(tk.Frame):
     def _add_zoom_scale_widget(self):
        
         self.zoom_scale_master = tk.Toplevel(self.slider_frame)
-        self.zoom_master.protocol("WM_DELETE_WINDOW", self._on_zoom_scale_close) 
+        self.zoom_master.protocol("WM_DELETE_WINDOW", 
+                            self._on_zoom_scale_close) 
         self.zoom_scale_frame = tk.Frame( self.zoom_scale_master, bg="black")
         self.zoom_scale_frame.pack(side=tk.TOP)
         self.zoom_scale_frame.pack_propagate(True)
 
-        self.zoom_scale_slider = tk.Scale( self.zoom_scale_frame, from_=self.scale_from_, to=self.scale_to,
-                                resolution=self.scale_increment/2., fg="#00fa32", bg='black', 
-                                length=200,highlightbackground="#00fa32", label="Zoom fraction",
-                                highlightthickness=0, orient=tk.HORIZONTAL, 
-                                command=self._set_zoom_scale)
+        self.zoom_scale_slider = tk.Scale( self.zoom_scale_frame, 
+                        from_=self.scale_from_, to=self.scale_to,
+                        resolution=self.scale_increment/2., 
+                        fg="#00fa32", bg='black', 
+                        length=200,
+                        highlightbackground="#00fa32", 
+                        label="Zoom fraction",
+                        highlightthickness=0, 
+                        orient=tk.HORIZONTAL, 
+                        command=self._set_zoom_scale)
         self.zoom_scale_slider.pack( side=tk.TOP, expand=tk.NO)
         self.zoom_scale_slider.set( 0.5)
 
-    
-
     def _setup_master_image_canvas(self):
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.image_frame) 
-        self.canvas.get_tk_widget().pack(side=tk.TOP, expand=tk.YES, fill=tk.BOTH)
-        self.canvas.get_tk_widget().configure(bg='black', highlightbackground="black")
+        self.canvas.get_tk_widget().pack(side=tk.TOP, 
+                                expand=tk.YES, fill=tk.BOTH)
+        self.canvas.get_tk_widget().configure(bg='black', 
+                                highlightbackground="black")
             
     def _setup_zoom_figure(self):
         self.zoom_fig = plt.figure( figsize=(3,3))
@@ -391,7 +406,8 @@ class ImageViewer(tk.Frame):
         
 
     def _load_zoom_image_into_figure(self):
-        self._zoom_im = self.zoom_ax.imshow( self.img[:self.zoom_initY,:self.zoom_initX], 
+        self._zoom_im = self.zoom_ax.imshow( 
+                self.img[:self.zoom_initY,:self.zoom_initX], 
                 vmin=self.vmin, 
                 vmax=self.vmax, 
                 interpolation='nearest',
@@ -422,9 +438,6 @@ class ImageViewer(tk.Frame):
     def _on_zoom_master_close(self):
         self.showing_zoom_window=False
         self.RS.set_active(False)
-        #for patch in self.RS_artists:
-        #    artist.set_visible(False)
-        #self.ax.patches[0].set_visible(False)
         self.zoom_master.withdraw()
     
     def _on_zoom_scale_close(self):
@@ -435,24 +448,33 @@ class ImageViewer(tk.Frame):
         self.slider_master.withdraw()
 
     def _on_click_zoom_master(self, event):
+        print("Clicked the zoom mast")
         self.holding_zoom_master = True
 
     def _on_release_zoom_master(self, event):
+        print("Released the zoom mast")
         self.holding_zoom_master = False
    
     def _pack_zoom_figure_into_canvas(self):
         self.zoom_master = tk.Toplevel(self.master)
-        self.zoom_master.protocol("WM_DELETE_WINDOW", self._on_zoom_master_close)
+        self.zoom_master.protocol("WM_DELETE_WINDOW", 
+                            self._on_zoom_master_close)
         
         self.zoom_master.bind( "<Button-1>", self._on_click_zoom_master)
-        self.zoom_master.bind( "<ButtonRelease-1>", self._on_release_zoom_master)
-        self.zoom_master.bind( "<Configure>", self._on_mousemove_zoom_master)
+        self.zoom_master.bind( "<Configure>", 
+                            self._on_mousemove_zoom_master)
+        self.zoom_master.bind( "<ButtonRelease-1>", 
+                            self._on_release_zoom_master)
         
+        #self.zoom_master.bind("<B1-motion>", self._on_motion_zoom_master)
+
         self.zoom_master.pack_propagate(True)
         
-        self.zoom_canvas = FigureCanvasTkAgg(self.zoom_fig, master=self.zoom_master)
+        self.zoom_canvas = FigureCanvasTkAgg(self.zoom_fig, 
+                                master=self.zoom_master)
         self.zoom_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=tk.YES)
-        self.zoom_canvas.get_tk_widget().configure(bg='black', highlightbackground="black", bd=1 ) 
+        self.zoom_canvas.get_tk_widget().configure(bg='black', 
+                        highlightbackground="black", bd=1 ) 
         #self.showing_zoom_window = True
   
 
@@ -497,8 +519,19 @@ class ImageViewer(tk.Frame):
 #   DYNAMIC ZOOM IMAGE CALLBACKS
 #####################################
     def _on_mousemove_zoom_master(self, event):
-        if self.holding_zoom_master:
+        print("YOOOO")
+        new_size = (event.width, event.height)
+        #old_size = (self.zoom_master.winfo_width(), 
+        #    self.zoom_master.winfo_height())
+        
+#if self.holding_zoom_master:
+        print (new_size, self.curr_size)
+        
+        if new_size != self.curr_size:
+            print("Dargging that butch")
             self._sync_selector_to_zoomwindow()
+        
+        self.curr_size = new_size
     
     def _sync_selector_to_zoomwindow_on_rescale(self):
         
@@ -609,7 +642,6 @@ class ImageViewer(tk.Frame):
         height = (y2-y1)
         Ymid = .5*(y1 + y2)
         Xmid = .5*(x1 + x2)
-       
 
 #       zoom image
         self.img_extent = ( int(Xmid-width/2.), int(Xmid + width/2.), int(Ymid - height/2.), int(Ymid +height/2.) )
@@ -639,7 +671,11 @@ class ImageViewer(tk.Frame):
 #       sync window size
         #self.zoom_canvas.xview_scroll(int( width), "units")
         #self.zoom_canvas.yview_scroll(int(height), "units")
-        self.zoom_master.geometry("%dx%d" %(int(width/self.scale), int(height/self.scale)))
+        self.zoom_master.geometry("%dx%d" %(int(width/self.scale), 
+                    int(height/self.scale)))
+    
+        self.curr_size = (self.zoom_master.winfo_width(), 
+                            self.zoom_master.winfo_height())
         
     def _setup_selector(self):
         artists =  self.ax.get_children()
@@ -651,15 +687,20 @@ class ImageViewer(tk.Frame):
                                        interactive=True,
                                        rectprops=self.rectprops)
 
-        self.RS_artists = [ a for a in self.ax.get_children() if a not in artists]
+        self.RS_artists = [ a for a in self.ax.get_children() 
+            if a not in artists]
         
-        self.RS_rectangle = [a for a in self.RS.artists if type(a) == mpl.patches.Rectangle ]
+        self.RS_rectangle = [a for a in self.RS.artists 
+            if type(a) == mpl.patches.Rectangle ]
         assert( len(self.RS_rectangle)==1)
         self.RS_rectangle = self.RS_rectangle[0]
         
-        self.RS_rectangle.figure.canvas.mpl_connect('motion_notify_event', self.on_rs_motion)
-        self.RS_rectangle.figure.canvas.mpl_connect('button_press_event', self.on_rs_press)
-        self.RS_rectangle.figure.canvas.mpl_connect('button_release_event', self.on_rs_release)
+        self.RS_rectangle.figure.canvas.mpl_connect('motion_notify_event', 
+            self.on_rs_motion)
+        self.RS_rectangle.figure.canvas.mpl_connect('button_press_event', 
+            self.on_rs_press)
+        self.RS_rectangle.figure.canvas.mpl_connect('button_release_event', 
+            self.on_rs_release)
     
     def _on_rectangle_selection(self, press, release):
         """
@@ -685,14 +726,14 @@ class ImageViewer(tk.Frame):
     
 
 if __name__ == '__main__':
-    #img = np.random.random(  (1500,1500) )
-    #Y,X = np.indices( img.shape)
-    #img = np.sin(X**2/ 10000.)**2 *np.cos(Y**2/10000.)*3
+    img = np.random.random(  (1500,1500) )
+    Y,X = np.indices( img.shape)
+    img = np.sin(X**2/ 10000.)**2 *np.cos(Y**2/10000.)*3
 
-    import h5py
-    f = h5py.File("/Users/damende/a2a_randpeaks/a2a_beta.20+.cxi")
+    #import h5py
+    #f = h5py.File("/Users/damende/a2a_randpeaks/a2a_beta.20+.cxi")
     #f = h5py.File("testdd")
-    img = f['data'][0]
+    #img = f['data'][0]
     #img [ img > 1000] = 0
     
     root = tk.Tk()

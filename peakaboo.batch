@@ -1,5 +1,4 @@
-#!/usr/bin/python
-
+#!/reg/d/psdm/cxi/cxilu5617/scratch/python/miniconda3/bin/python3
 import glob
 import json
 import argparse

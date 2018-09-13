@@ -6,7 +6,6 @@ except ImportError:
 import sys
 import re
 import os
-import pandas
 import h5py
 import numpy as np
 import matplotlib as mpl
