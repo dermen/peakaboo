@@ -141,9 +141,11 @@ class Peakaboo(tk.Frame):
 #       MASK STUFF
 #####################
         self._mask_loader()
-        self._mask_values_tool()
         self._make_mask_dilation_widgets()
-        
+        self._make_active_masking_frame()
+        self._mask_values_tool()
+        self._mask_accumulate_widget()
+        self._make_accumulate_and_mask_button()
 #       center / geometry stuff
         self.CENT = (self.browser.IV.img.shape[1]/2., self.browser.IV.img.shape[0]/2.)
         self._set_R()
@@ -649,22 +651,104 @@ class Peakaboo(tk.Frame):
             
             self._show_img_with_mask()
 
-    def _mask_values_tool(self):
-        fr = tk.Frame( self.mask_frame, bg="black", padx=3, pady=3, 
-            highlightbackground="#00fa32")
-        fr.pack(side=tk.TOP, fill=tk.X)
 
-        self.mask_below_var = tk.DoubleVar()
-        e_fr = tk.Frame( fr ) 
-        e_fr.pack(side=tk.TOP)
+
+    def _mask_accumulate_widget(self):
+        mask_accumulate_fr = tk.Frame( self.active_masking_frame, bg="black")
+        mask_accumulate_fr.pack(side=tk.TOP, expand=tk.YES, fill=tk.X, pady=10)
         
-        e = tk.Entry(e_fr, width=7, textvariable=self.mask_below_var)
-        e.config(bg="black", fg="#00fa32",
-            selectforeground="black", selectbackground="#00fa32", 
-            insertbackground='#00fa32')
-        tk.Label(e_fr, bg='black', fg='#00fa32', text='mask below', width=10)\
+        
+        entry_fr = tk.Frame( mask_accumulate_fr, bg="black")
+        entry_fr.pack(side=tk.TOP, expand=tk.YES, pady=5)
+
+        self.mask_accumulate_var = tk.IntVar()
+        self.mask_accumulate_entry = tk.Entry(entry_fr, width=7, 
+                        textvariable=self.mask_accumulate_var)
+        self.mask_accumulate_entry.config(bg="black", fg="#00fa32",
+                        selectforeground="black", selectbackground="#00fa32", 
+                        insertbackground='#00fa32', font="Helvetica 14")
+        self.mask_accumulate_var.set(1)
+
+        tk.Label(entry_fr, text="Average shots before masking values", 
+            font="Helvetica 14", bg="black", fg="#00fa32")\
             .pack(side=tk.LEFT)
-        e.pack(side=tk.TOP)
+        self.mask_accumulate_entry.pack(side=tk.LEFT)
+       
+        button_fr = tk.Frame( mask_accumulate_fr, bg="black")
+        button_fr.pack(side=tk.TOP, expand=tk.YES, pady=5)
+        
+        self.use_median_to_accumulate = tk.IntVar()
+        self.mask_with_median_button = tk.Checkbutton( button_fr, 
+            variable=self.use_median_to_accumulate, bg="black",
+            command=self._set_median_accumulate)
+        
+        self.use_mean_to_accumulate = tk.IntVar()
+        self.mask_with_mean_button = tk.Checkbutton( button_fr, 
+            variable=self.use_mean_to_accumulate, bg="black",
+            command=self._set_mean_accumulate)
+        
+        tk.Label(button_fr, text="Median accumulate", font="Helvetica 14", bg="black", fg="#00fa32" )\
+            .pack(side=tk.LEFT)
+        self.mask_with_median_button.pack(side=tk.LEFT)
+        tk.Label(button_fr, text="Mean accumulate", font="Helvetica 14", bg="black", fg="#00fa32" )\
+            .pack(side=tk.LEFT)
+        self.mask_with_mean_button.pack(side=tk.LEFT)
+        
+        self.use_median_to_accumulate.set(1)
+        self.use_mean_to_accumulate.set(0)
+   
+    def _make_accumulate_and_mask_button(self):
+        fr = tk.Frame( self.active_masking_frame, bg="black")
+        fr.pack(side=tk.TOP, pady=10)
+        
+        tk.Button( fr,  text="Accumulate and mask",width=30, 
+             highlightbackground="black", command=self._accumulate_and_mask)\
+            .pack(side=tk.TOP, expand=tk.YES, fill=tk.X)
+
+    def _accumulate_and_mask(self):
+        pass
+
+    def _set_median_accumulate(self):
+        self.use_median_to_accumulate.set(1)
+        self.use_mean_to_accumulate.set(0)
+    
+    def _set_mean_accumulate(self):
+        self.use_median_to_accumulate.set(0)
+        self.use_mean_to_accumulate.set(1)
+       
+    def _make_active_masking_frame(self):
+        self.active_masking_frame = tk.Frame( self.mask_operations_frame, 
+            bg="black", highlightbackground="#fa0032", bd=2)
+        self.active_masking_frame.pack(side=tk.TOP, expand=tk.YES, pady=10)
+        
+
+    def _mask_values_tool(self):
+        mask_values_fr = tk.Frame( self.active_masking_frame , bg="black") 
+        mask_values_fr.pack(side=tk.TOP, expand=tk.YES, pady=10)
+        
+        self.mask_below_var = tk.DoubleVar()
+        self.mask_below_entry = tk.Entry(mask_values_fr, width=7, textvariable=self.mask_below_var)
+        self.mask_below_entry.config(bg="black", fg="#00fa32",
+            selectforeground="black", selectbackground="#00fa32", 
+            insertbackground='#00fa32', font="Helvetica 14")
+        
+        self.mask_above_var = tk.DoubleVar()
+        self.mask_above_entry = tk.Entry(mask_values_fr, width=7, textvariable=self.mask_above_var)
+        self.mask_above_entry.config(bg="black", fg="#00fa32",
+            selectforeground="black", selectbackground="#00fa32", 
+            insertbackground='#00fa32', font="Helvetica 14")
+        self.mask_above_var.set(65534)
+        
+        tk.Label(mask_values_fr, bg='black', fg='#00fa32', text='mask below',  
+            font="Helvetica 14", width=10)\
+            .pack(side=tk.LEFT)
+        self.mask_below_entry.pack(side=tk.LEFT)
+        tk.Label(mask_values_fr, bg='black', fg='#00fa32', text='mask above', 
+            font="Helvetica 14",  width=10)\
+            .pack(side=tk.LEFT)
+        self.mask_above_entry.pack(side=tk.LEFT)
+      
+
 
 
     
