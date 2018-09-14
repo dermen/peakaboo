@@ -1,4 +1,5 @@
-#!/reg/d/psdm/cxi/cxilu5617/scratch/python/miniconda3/bin/python3
+#!/reg/g/psdm/sw/conda/inst/miniconda2-prod-rhel7/envs/ana-1.3.58/bin/python
+
 from __future__ import absolute_import
 
 import warnings
@@ -763,17 +764,12 @@ class Peakaboo(tk.Frame):
              
         mask = np.logical_and( ave_img > min_value, ave_img < max_value)
         print("Masking above %.4f and below %.4f"%(min_value, max_value)) 
+        
         self.browser.IV.set_data(ave_img, mask=mask)
         
-        self.BASE_MASK = mask
-        self._set_new_mask()
+        #self.BASE_MASK = mask
+        #self._set_new_mask()
         
-        #fig = plt.figure()
-        #plt.imshow( ave_img, vmin=self.browser.IV.vmin, 
-        #    vmax=self.browser.IV.vmax)
-        #fig.canvas.draw()
-        #plt.pause(0.1)
-
     def _set_median_accumulate(self):
         self.use_median_to_accumulate.set(1)
         self.use_mean_to_accumulate.set(0)
@@ -823,11 +819,10 @@ class Peakaboo(tk.Frame):
         self.mask_above_entry.pack(side=tk.LEFT)
       
 
-
-
     
     def _mask_loader(self):
-        fr = tk.Frame(  self.mask_frame, bg='black', padx=3, pady=3,highlightbackground="#00fa32", highlightthickness=2)
+        fr = tk.Frame(  self.mask_frame, bg='black', padx=3, pady=3,
+                        highlightbackground="#00fa32", highlightthickness=2)
         fr.pack(side=tk.TOP, fill=tk.X )
         self.mask_operations_frame = fr
         
@@ -1187,7 +1182,8 @@ class Peakaboo(tk.Frame):
         
         if self.peakaboo:
             self._detect_peaks() # this sets found circs 
-            self.browser._add_patches( patches=self.found_circs, label="found_circs", edgecolor='Deeppink',
+            self.browser._add_patches( patches=self.found_circs, 
+                label="found_circs", edgecolor='Deeppink',
                 facecolor='none')
              
         #self.browser._set_xy_limits()

@@ -6,7 +6,7 @@ except ImportError:
 import matplotlib as mpl
 mpl.use('TkAgg')
 import pylab as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
 from matplotlib.widgets import RectangleSelector
 import sys
@@ -104,6 +104,7 @@ class ImageViewer(tk.Frame):
     
     
     def set_data(self, data, mask=None):
+        
         self.img = data
         
         sY = slice( None, None, self.binning_factor)
