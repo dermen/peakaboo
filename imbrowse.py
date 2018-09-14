@@ -225,7 +225,6 @@ class BrowseImages:
             if p.get_label()==label:
                 p.remove()
                 print("Removed %s from axis"%label)
-                break
         
     def _add_patches( self, patches, label=None, **kwargs):
         pc = PatchCollection( patches, label=label, **kwargs)

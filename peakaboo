@@ -295,11 +295,11 @@ class Peakaboo(tk.Frame):
 
     def _disable_peak_detection(self):
         self.peakaboo = False
-        self._update_browser()
+        self._doo_the_boo()
     
     def _hide_peakaboo_peaks(self):
         self.peakaboo=False
-        self._update_browser()
+        self._doo_the_boo()
 
     
     def _radial_bins_from_entry(self):
@@ -1051,8 +1051,7 @@ class Peakaboo(tk.Frame):
 
     def _on_peakaboo( self):
         self.peakaboo=True
-        #self.detect_peaks_var.set(0)
-        self._update_browser()
+        self._doo_the_boo() 
 
 #   tool tip message bindings, can be used for any widgets... 
     def _on_enter( self, event, message=""):
@@ -1134,7 +1133,7 @@ class Peakaboo(tk.Frame):
             else:
                 cb.deselect()
 
-        self._update_browser()
+        self._doo_the_boo()
 
     def get_inputs(self):
         for e, entry in self.pk_par_vars.items():
@@ -1175,15 +1174,17 @@ class Peakaboo(tk.Frame):
         self.browser._set_idx_fname_path()
         self.browser._set_image()
         self.browser._update_img_info_text()
-        
-        if self.found_circs:
-            self.browser._remove_patch_collections( label="found_circs" )
-            self.found_circs = []
+        self._doo_the_boo()
+
+    def _doo_the_boo(self):
+        #if self.found_circs:
+        self.browser._remove_patch_collections( label="found_circs" )
+        self.found_circs = []
         
         if self.peakaboo:
             self._detect_peaks() # this sets found circs 
-            self.browser._add_patches( patches=self.found_circs, 
-                label="found_circs", edgecolor='Deeppink',
+            self.browser._add_patches( patches=self.found_circs, label="found_circs", 
+                edgecolor='Deeppink',
                 facecolor='none')
              
         #self.browser._set_xy_limits()
@@ -1191,10 +1192,6 @@ class Peakaboo(tk.Frame):
             self._show_img_with_mask()
         else:
             self.browser.IV.set_data( self.browser.IV.img)
-        
-        #self.browser.IV.update_master_image()
-        #self.browser.IV.update_zoom_image()
-        #self.browser.IV.fig.canvas.draw()
         
         if PK_PAR["sig_G"] is not None:
             self._set_gaussian_filter_value(PK_PAR["sig_G"])
@@ -1206,8 +1203,8 @@ if __name__ == '__main__':
         description='')
     
     parser.add_argument(
-        '--hdf5-datapath',
-        dest='images_path',
+        '--hdf5-path',
+        dest='datapath',
         type=str,
         default=None)
 
@@ -1242,7 +1239,6 @@ if __name__ == '__main__':
         default='Deeppink')
     
     args = parser.parse_args()
-
     if args.run is not None:
         how = 'psana'
     else:
@@ -1254,7 +1250,7 @@ if __name__ == '__main__':
     frame = Peakaboo(
         root,
         cxi_fname=args.fname,
-        images_path=args.images_path,
+        image_path=args.datapath,
         run = args.run,
         experiment=args.experiment,
         detector=args.detector,
