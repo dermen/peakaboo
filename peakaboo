@@ -754,7 +754,7 @@ class Peakaboo(tk.Frame):
             ave_img/= Nimgs_to_ave
              
         else: # use max
-            ave_img = np.zeros( self.browser.IV.img )
+            ave_img = np.zeros( self.browser.IV.img.shape )
             for ii in range( Nimgs_to_ave ):
                 print(" averaging %d / %d" %( ii, Nimgs_to_ave ))
                 self.browser._next(1)

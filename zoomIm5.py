@@ -59,6 +59,7 @@ class ImageViewer(tk.Frame):
         self.time_since_last_call = time.time()
         self.min_redraw_time = .3
         self.press_data = None
+        self.curr_size= (1,1)
 
         self.patch_collections = []
 #####################################

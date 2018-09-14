@@ -71,13 +71,15 @@ class PsanaImages:
             if self.event is None:
                 continue
             self.event_index += 1
+            print("skipping image %d / %d "%( self.event_index, i))
         img = self._get_image()
         
         while img is None:
+            print("None image")
             self.event = self.events.next()
             if self.event is None:
                 continue
-            self.event_index += 1
+            #self.event_index += 1
             img = self._get_image()
         
         return img
@@ -98,7 +100,6 @@ class PsanaImages:
         img = self.Detector.image( self.event)
         if img is None:
             self.filename_i = "Nonetype image"
-            img = np.zeros( (1000,1000))
         else:
             self.filename_i = "run: %d; exp: %s; evr: %s"\
                 %(self.run, self.exp, self.evr_str )
