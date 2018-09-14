@@ -29,7 +29,7 @@ btnstyle = {'highlightbackground':'black'}
 
 
 class PsanaImages:
-    def __init__(self, exp, run, detector_name, N_events=100, codes=None):
+    def __init__(self, exp, run, detector_name, N_events=10000, codes=None):
         """
         exp: experiment string
         run: run number
@@ -41,7 +41,7 @@ class PsanaImages:
        
         self.run = run
         self.exp = exp
-        self.N_events = N_events
+        self.N_events = self.N = N_events
         self.codes = codes
         self.ds = psana.DataSource("exp=%s:run=%s"%(exp,run))
         self.detnames = [ d for sl in psana.DetNames() for d in sl]
@@ -49,14 +49,13 @@ class PsanaImages:
         
         assert(  detector_name  in self.detnames)
        
-        code_dets = [ psana.Detector(d, env) for d in detnames if d.startswith("evr") ]
+        self.code_dets = [ psana.Detector(d, self.env) 
+                    for d in self.detnames if d.startswith("evr") ]
         
-        self.events = ds.events() #this is a generator!
+        self.events = self.ds.events() #this is a generator!
 
         self.detector_name = detector_name
-        self.detector = psana.Detector( self.detector_name, self.env)
-
-        psana.Detector("DsdCsPad", env)
+        self.Detector = psana.Detector( self.detector_name, self.env)
 
         self.event = self.events.next()
         self.event_index = 0
@@ -72,18 +71,27 @@ class PsanaImages:
             if self.event is None:
                 continue
             self.event_index += 1
-        return self._get_image()
-
+        img = self._get_image()
+        
+        while img is None:
+            self.event = self.events.next()
+            if self.event is None:
+                continue
+            self.event_index += 1
+            img = self._get_image()
+        
+        return img
 
     def _get_image( self):
         self.codes = []
         for cdet in self.code_dets:
-            c = det.eventCodes(self.event)
+            c = cdet.eventCodes(self.event)
             if c is not None:
-                codes += c
+                self.codes += c
         self.event_codes = list(set( self.codes))
         self.evr_str = " ".join([str(c) for c in self.event_codes ])
-        self.filename_i = "run: %d; exp: %s; evr: %s"%(self.run, self.exp, self.evr_str )
+        self.filename_i = "run: %d; exp: %s; evr: %s"\
+                %(self.run, self.exp, self.evr_str )
         self.shot_i = self.event_index
         self.N_i = self.N_events
 
@@ -92,7 +100,8 @@ class PsanaImages:
             self.filename_i = "Nonetype image"
             img = np.zeros( (1000,1000))
         else:
-            self.filename_i = "run: %d; exp: %s; evr: %s"%(self.run, self.exp, self.evr_str )
+            self.filename_i = "run: %d; exp: %s; evr: %s"\
+                %(self.run, self.exp, self.evr_str )
         
         return img
         

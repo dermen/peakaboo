@@ -30,7 +30,7 @@ class ImageViewer(tk.Frame):
         self.img = img_data
         self.imgY, self.imgX = self.img.shape
         self.zoom_initX = self.zoom_initY= 100
-        self.main_img_scale =  4
+        self.main_img_scale =  2
         self.binning_factor = self.main_img_scale        
 #       scale slider factors
         self.min_ydim = self.min_xdim = 20
@@ -566,7 +566,7 @@ class ImageViewer(tk.Frame):
         sY =  slice( int(y1), int(y2), None )
         sX =  slice( int(x1), int(x2), None )
         if self.mask is not None:
-            self._zoom_im.set_data(  self.img [ sY,sX] * self.mask[sY, sX] ) 
+            self._zoom_im.set_data(  self.img[sY,sX] * self.mask[sY, sX] ) 
         else:
             self._zoom_im.set_data( self.img[ sY,sX])
 

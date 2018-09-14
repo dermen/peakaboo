@@ -109,7 +109,7 @@ class Peakaboo(tk.Frame):
             h5_images_path=image_path,
             psana_experiment_name=experiment,
             psana_run_number=run,
-            psana_detector=detector,
+            psana_detector_name=detector,
             image_nav_frame=self.nav_frame,
             image_frame=None)
 
@@ -657,7 +657,6 @@ class Peakaboo(tk.Frame):
             self._show_img_with_mask()
 
 
-
     def _mask_accumulate_widget(self):
         mask_accumulate_fr = tk.Frame( self.active_masking_frame, bg="black")
         mask_accumulate_fr.pack(side=tk.TOP, expand=tk.YES, fill=tk.X, pady=10)
@@ -692,34 +691,103 @@ class Peakaboo(tk.Frame):
             variable=self.use_mean_to_accumulate, bg="black",
             command=self._set_mean_accumulate)
         
-        tk.Label(button_fr, text="Median accumulate", font="Helvetica 14", bg="black", fg="#00fa32" )\
+        self.use_max_to_accumulate = tk.IntVar()
+        self.mask_with_max_button = tk.Checkbutton( button_fr, 
+            variable=self.use_max_to_accumulate, bg="black",
+            command=self._set_max_accumulate)
+        
+        tk.Label(button_fr, text="Median accumulate", 
+                font="Helvetica 14", bg="black", fg="#00fa32" )\
             .pack(side=tk.LEFT)
         self.mask_with_median_button.pack(side=tk.LEFT)
-        tk.Label(button_fr, text="Mean accumulate", font="Helvetica 14", bg="black", fg="#00fa32" )\
+        tk.Label(button_fr, text="Mean accumulate", 
+                font="Helvetica 14", bg="black", fg="#00fa32" )\
             .pack(side=tk.LEFT)
         self.mask_with_mean_button.pack(side=tk.LEFT)
+        tk.Label(button_fr, text="Max accumulate", 
+                font="Helvetica 14", bg="black", fg="#00fa32" )\
+            .pack(side=tk.LEFT)
+        self.mask_with_max_button.pack(side=tk.LEFT)
         
         self.use_median_to_accumulate.set(1)
         self.use_mean_to_accumulate.set(0)
+        self.use_max_to_accumulate.set(0)
    
     def _make_accumulate_and_mask_button(self):
         fr = tk.Frame( self.active_masking_frame, bg="black")
         fr.pack(side=tk.TOP, pady=10)
         
         tk.Button( fr,  text="Accumulate and mask",width=30, 
-             highlightbackground="black", command=self._accumulate_and_mask)\
+             highlightbackground="black", 
+             command=self._accumulate_and_mask)\
             .pack(side=tk.TOP, expand=tk.YES, fill=tk.X)
 
     def _accumulate_and_mask(self):
-        pass
+        
+        Nimgs_to_ave = self.mask_accumulate_var.get()
+        
+        min_value = self.mask_below_var.get() 
+        max_value = self.mask_above_var.get()
+        
+        self._hide_peakaboo_peaks()
+
+        if self.use_median_to_accumulate.get():
+            ave_img = []
+            for ii in range( Nimgs_to_ave ):
+                print(" averaging %d / %d" %( ii, Nimgs_to_ave ))
+                self.browser._next(1)
+                img = self.browser.IV.img
+                img[ img < min_value] = min_value -1
+                img[ img > max_value] = max_value +1
+                ave_img.append( img)
+            ave_img = np.median( ave_img, 0)
+
+        elif self.use_mean_to_accumulate.get():
+            ave_img = np.zeros( self.browser.IV.img.shape )
+            for ii in range( Nimgs_to_ave ):
+                print(" averaging %d / %d" %( ii, Nimgs_to_ave ))
+                self.browser._next(1)
+                img = self.browser.IV.img
+                img[ img < min_value] = min_value -1
+                img[ img > max_value] = max_value +1
+                ave_img += img
+            ave_img/= Nimgs_to_ave
+             
+        else: # use max
+            ave_img = np.zeros( self.browser.IV.img )
+            for ii in range( Nimgs_to_ave ):
+                print(" averaging %d / %d" %( ii, Nimgs_to_ave ))
+                self.browser._next(1)
+                img = self.browser.IV.img
+                ave_img = np.max( [self.browser.IV.img, ave_img], 0)
+             
+        mask = np.logical_and( ave_img > min_value, ave_img < max_value)
+        print("Masking above %.4f and below %.4f"%(min_value, max_value)) 
+        self.browser.IV.set_data(ave_img, mask=mask)
+        
+        self.BASE_MASK = mask
+        self._set_new_mask()
+        
+        #fig = plt.figure()
+        #plt.imshow( ave_img, vmin=self.browser.IV.vmin, 
+        #    vmax=self.browser.IV.vmax)
+        #fig.canvas.draw()
+        #plt.pause(0.1)
 
     def _set_median_accumulate(self):
         self.use_median_to_accumulate.set(1)
         self.use_mean_to_accumulate.set(0)
+        self.use_max_to_accumulate.set(0)
     
     def _set_mean_accumulate(self):
         self.use_median_to_accumulate.set(0)
         self.use_mean_to_accumulate.set(1)
+        self.use_max_to_accumulate.set(0)
+    
+    def _set_max_accumulate(self):
+        self.use_median_to_accumulate.set(0)
+        self.use_mean_to_accumulate.set(0)
+        self.use_max_to_accumulate.set(1)
        
     def _make_active_masking_frame(self):
         self.active_masking_frame = tk.Frame( self.mask_operations_frame, 
@@ -732,7 +800,8 @@ class Peakaboo(tk.Frame):
         mask_values_fr.pack(side=tk.TOP, expand=tk.YES, pady=10)
         
         self.mask_below_var = tk.DoubleVar()
-        self.mask_below_entry = tk.Entry(mask_values_fr, width=7, textvariable=self.mask_below_var)
+        self.mask_below_entry = tk.Entry(mask_values_fr, width=7, 
+                textvariable=self.mask_below_var)
         self.mask_below_entry.config(bg="black", fg="#00fa32",
             selectforeground="black", selectbackground="#00fa32", 
             insertbackground='#00fa32', font="Helvetica 14")
@@ -1136,13 +1205,15 @@ class Peakaboo(tk.Frame):
 
 if __name__ == '__main__':
     from argparse import ArgumentParser
+    
     parser = ArgumentParser(
         description='')
+    
     parser.add_argument(
-        '-data',
+        '--hdf5-datapath',
         dest='images_path',
         type=str,
-        default='data')
+        default=None)
 
     parser.add_argument(
         '-f, --fname',
@@ -1153,19 +1224,19 @@ if __name__ == '__main__':
     parser.add_argument(
         '-r',
         dest='run',
-        type=int, help='psana run number'
+        type=int, help='psana run number',
         default=None)
     
     parser.add_argument(
         '--detector',
         dest='detector',
-        type=str, help='psana detector string'
+        type=str, help='psana detector string',
         default="DsaCsPad")
     
     parser.add_argument(
         '--experiment',
         dest='experiment',
-        type=str, help='psana experiment string'
+        type=str, help='psana experiment string',
         default="cxilu5617")
     
     parser.add_argument(
@@ -1195,10 +1266,6 @@ if __name__ == '__main__':
         how = how,
         bg='black' )
     
-    def __init__(self, master, cxi_fname=None, image_path=None, 
-                    run=None, experiment=None, detector=None,
-                    circ_color='Limegreen', how="files", *args, **kwargs):
-        
     frame.pack( side=tk.TOP, expand=tk.YES)
     root.mainloop()
 
