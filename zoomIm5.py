@@ -60,8 +60,9 @@ class ImageViewer(tk.Frame):
         self.min_redraw_time = .3
         self.press_data = None
         self.curr_size= (1,1)
-
+        self.zoom_maxW = self.zoom_maxH = 500
         self.patch_collections = []
+
 #####################################
 #       WIDGETS
 #####################################
@@ -88,7 +89,6 @@ class ImageViewer(tk.Frame):
         self._add_range_slider()
         self._add_zoom_scale_widget()
 #       ########
-
         self._setup_selector()
 
 #       #######
@@ -459,6 +459,7 @@ class ImageViewer(tk.Frame):
    
     def _pack_zoom_figure_into_canvas(self):
         self.zoom_master = tk.Toplevel(self.master)
+        self.zoom_master.maxsize=(self.zoom_maxW,self.zoom_maxH)
         self.zoom_master.protocol("WM_DELETE_WINDOW", 
                             self._on_zoom_master_close)
         

@@ -48,6 +48,20 @@ def detect_peaks(image, neighborhood=None):
     return detected_peaks
 
 
+def save_peak_param_file( filename, PK_PAR):
+    """
+    saves a peak parameter file
+    """
+    with h5py.File(filename,'w') as h5:
+        for name,data in PK_PAR.items():
+            
+            if data is None:
+                h5.create_dataset(name, data="_NULL")
+            else:
+                h5.create_dataset(name, data=data)
+
+
+
 def load_peak_param_file( filename):
     """
     Load a peak parameters hdf5 file
@@ -111,6 +125,7 @@ class PeakabooImage:
         hence it is best to at least do a radial sectionining.
         Tools to do radial sectionining are embedded in the GUI.
         """
+        print("Will not use sectioning")
         self.section_array = np.ones( self.img_sh, np.int) # makes entire image a single section
         self._set_section_idx()
 
@@ -123,6 +138,8 @@ class PeakabooImage:
 #       make sure rbins is defined
         assert( self.pk_par["rbins"] is not None)
         assert( self.pk_par["R"] is not None)
+
+        print("Will use radial sectioning")
 
 #       convert Radial pixel value array to 1D 
         R_1d = self.pk_par["R"].ravel()
@@ -157,9 +174,12 @@ class PeakabooImage:
         section image from arbitrary file
         that defines sections with integer labels
         """
-        assert( self.pk_par["sectioning_file"] is not None)
+
+        assert( self.pk_par["sectioning_array"] is not None)
         
-        self.section_array = np.load( self.pk_par["sectioning_file"])
+        print("Will use fromfile sectioning")
+
+        self.section_array = self.pk_par["sectioning_array"]
       
         assert( self.section_array.shape==self.img_sh) 
        
@@ -299,12 +319,7 @@ class PeakabooImage:
         self.img = img
 
         if self.pk_par["sig_G"] is not None:
-            self.filtered_img = gaussian_filter( self.img * self.mask, self.pk_par["sig_G"] )
-        
-        #if self.pk_par["sig_G"] is not None:
-        #    self.img = gaussian_filter( img*self.mask, self.pk_par["sig_G"])
-        #else:
-        #    self.img = img
+            self.filtered_img = gaussian_filter( self.img * self.mask, self.pk_par["sig_G"] )*self.mask
         
         self.set_global_noise() 
         self.img_1d = self.img.copy().ravel()

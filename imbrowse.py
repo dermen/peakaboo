@@ -116,8 +116,18 @@ class multi_h5s_img:
         fnames, the list of fnames
         data_path, the path to the data in each file
         """
-        self.h5s = [ h5py.File(f,'r') for f in fnames]
-        self.N = sum( [h[data_path].shape[0] for h in self.h5s])
+        self.h5s = []
+        self.N = 0
+        for f in fnames:
+            try:
+                h = h5py.File(f, 'r')
+                nshot = h[data_path].shape[0]
+                assert( nshot > 0)
+                self.h5s.append( h )
+                self.N += nshot
+            except:
+                pass
+        #self.N = sum( [h[data_path].shape[0] for h in self.h5s])
         self.data_path = data_path
         self._make_index()
     

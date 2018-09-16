@@ -40,8 +40,9 @@ try:
     has_loki=True
 except ImportError:
     has_loki=False
-
+has_loki=False
 import imbrowse
+import widgets
 
 btnstyle = {'highlightbackground':'black'}
             
@@ -63,7 +64,9 @@ PK_PAR =  { 'make_sparse':True,# leave true..
     'max_conn':999999,
     'peak_COM':True, # if true uses center of mass (intnsity) to set peak pos, else uses 
     'run_rad_med':False, #whether to use the median radius thresholding
-    'mask':None} #mask im
+    'mask':None,
+    'sectioning_array':None,
+    "how_to_section":None} #mask im
 
 ##############
 
@@ -95,6 +98,8 @@ class Peakaboo(tk.Frame):
         self.found_circs = []
         self.peakaboo=False
         self.mask_join = np.logical_and
+
+        self.how_to_section = None
 
 #       tab master
         self.nb = ttk.Notebook(self.master)#, style="TNotebook")
@@ -158,11 +163,18 @@ class Peakaboo(tk.Frame):
         self._detector_center_widgets()
         self._set_info_panel()
       
-#       radial stuff
+#       radial sectiong stuff
         self._make_radial_sectioning_frame()
         self._set_radpro_maker()
         self._set_radial_bin_widgets()
-      
+     
+#       fromfile sectioning stuff
+        self._make_fromfile_sectioning_frame()
+        #self._make_fromfile_widgets()
+
+#       how to section frame
+        self._make_howtosection_frame()
+
         self._set_hover_messages()
         
         self._pack_the_master_frame()
@@ -211,14 +223,16 @@ class Peakaboo(tk.Frame):
         cb.pack( side=tk.LEFT)
 
     def _show_gauss_blur(self):
-        if self.show_gauss_blur_var.get()==1:
-            self.browser.IV.set_data( self.PK_IMG.img)
-        else:
-            self.browser.IV.set_data( self.browser.IV.img)
+        pass
+        #if self.show_gauss_blur_var.get()==1:
+        #    new_mask = self.mask_join( self.BASE_MASK, self.MASK_SCALED )*self.MASK_BEAM
+        #    self.browser.IV.set_data( gaussian_filter(self.PK_IMG.img), mask=new_mask )
+        #else:
+        #    self.browser.IV.set_data( self.browser.IV.img)
 
     def _setup_peakaboo_image_class(self):
         self.PK_IMG = peaks.PeakabooImage( PK_PAR, self.browser.IV.img.shape, 
-                            how_to_section=None)
+                            how_to_section=self.how_to_section)
 
     def _make_radial_sectioning_frame(self):
         self.radsectioning_frame = tk.Frame( self.sectioning_frame, bg='black', 
@@ -230,6 +244,79 @@ class Peakaboo(tk.Frame):
         tk.Label(self.radsectioning_frame, text="Radial sectioning",
                                 fg="#00fa32", bg='black' , font= 'Helvetica 14 bold')\
                                 .pack(side=tk.TOP)
+
+    def _make_fromfile_sectioning_frame(self):
+        self.fromfile_sectioning_frame = tk.Frame(self.sectioning_frame, bg="black")
+        self.fromfile_sectioning_frame.pack(side=tk.TOP, pady=10)
+        
+        tk.Button( self.fromfile_sectioning_frame, text="Load sectioning file", 
+            font="Helvetica 14", width=20, command=self._load_fromfile_array).pack(side=tk.TOP)
+
+    def _load_fromfile_array(self):
+        self.sectioning_file, sectioning_array = self._load_numpy_binary("SECTION")
+        if sectioning_array is None:
+            return
+            self.use_fromfile_sectioning_button.variable.set(0)
+        if not sectioning_array.shape == self.browser.IV.img.shape:
+            self.launch_warning("Shape of section array != shape of image")
+            self.use_fromfile_sectioning_button.variable.set(0)
+            return
+        PK_PAR["sectioning_array"] = sectioning_array
+        self.PK_IMG.pk_par["sectioning_array"] = sectioning_array
+        self._use_fromfile_sectioning()
+
+    def _make_howtosection_frame(self):
+        self.how_to_section_frame = tk.Frame( self.sectioning_frame, bg="black")
+        self.how_to_section_frame.pack(side=tk.TOP, pady=10)
+
+        tk.Label(self.how_to_section_frame, text="How to section", fg="#00fa32", 
+                font="Helvetica 14", bg="black")\
+                .pack(side=tk.TOP)
+
+        self.use_radial_sectioning_button = widgets.LabeledCheckbutton(self.how_to_section_frame,
+            label="radial", command=self._use_radial_sectioning, label_width=10, bg="blue")
+        self.use_radial_sectioning_button.pack(side=tk.TOP)
+        
+        self.use_fromfile_sectioning_button = widgets.LabeledCheckbutton(self.how_to_section_frame,
+            label="fromfile", command=self._use_fromfile_sectioning, label_width=10, bg="black")
+        self.use_fromfile_sectioning_button.pack(side=tk.TOP)
+        
+        self.use_no_sectioning_button = widgets.LabeledCheckbutton(self.how_to_section_frame,
+            label="none", command=self._use_no_sectioning, label_width=10, bg="black")
+        self.use_no_sectioning_button.pack(side=tk.TOP)
+
+        self.use_no_sectioning_button.variable.set(1)
+        self.use_fromfile_sectioning_button.variable.set(0)
+        self.use_radial_sectioning_button.variable.set(0)
+
+    def _use_radial_sectioning(self):
+        if self.PK_IMG.pk_par["rbins"] is None:
+            self.launch_warning("No radial bins provided!")
+            self.use_radial_sectioning_button.variable.set(0)
+            return
+        self.use_radial_sectioning_button.variable.set(1)
+        self.use_fromfile_sectioning_button.variable.set(0)
+        self.use_no_sectioning_button.variable.set(0)
+        self.how_to_section = "radial"
+        self.PK_IMG._set_up_sectioning(how="radial")
+
+    def _use_fromfile_sectioning(self):
+        if self.PK_IMG.pk_par["sectioning_array"] is None:
+            self.use_fromfile_sectioning_button.variable.set(0)
+            self.launch_warning("No sectioning array provided!")
+            return
+        self.use_radial_sectioning_button.variable.set(0)
+        self.use_fromfile_sectioning_button.variable.set(1)
+        self.use_no_sectioning_button.variable.set(0)
+        self.how_to_section = "fromfile"
+        self.PK_IMG._set_up_sectioning(how="fromfile")
+    
+    def _use_no_sectioning(self):
+        self.use_radial_sectioning_button.variable.set(0)
+        self.use_fromfile_sectioning_button.variable.set(0)
+        self.use_no_sectioning_button.variable.set(1)
+        self.how_to_section = None
+        self.PK_IMG._set_up_sectioning(how=None)
 
     def _pack_the_master_frame(self):
         self.nb.pack( side=tk.TOP, expand=tk.YES)
@@ -555,7 +642,10 @@ class Peakaboo(tk.Frame):
 
     def _load_mask_from_file(self):
         self.mask_file, self.BASE_MASK = self._load_numpy_binary("MASK")
-       
+      
+        if self.BASE_MASK is None:
+            return
+
         if self.BASE_MASK is None:
             self.BASE_MASK = 1
 
@@ -611,9 +701,9 @@ class Peakaboo(tk.Frame):
         PK_PAR['sig_G'] = scale_factor
 
         new_mask = self.mask_join( self.BASE_MASK, self.MASK_SCALED )*self.MASK_BEAM
-        img = new_mask * self.browser.IV.img
+        img = new_mask*self.browser.IV.img
         
-        self.browser.IV.set_data( gaussian_filter( img, scale_factor) )
+        #self.browser.IV.set_data( gaussian_filter( img, scale_factor), mask=new_mask  )
         self.pk_par_vars["sig_G"].set( str(scale_factor))
 
     def _make_mask_dilation_widgets(self):
@@ -718,10 +808,10 @@ class Peakaboo(tk.Frame):
         fr = tk.Frame( self.active_masking_frame, bg="black")
         fr.pack(side=tk.TOP, pady=10)
         
-        tk.Button( fr,  text="Accumulate and mask",width=30, 
-             highlightbackground="black", 
-             command=self._accumulate_and_mask)\
-            .pack(side=tk.TOP, expand=tk.YES, fill=tk.X)
+        #tk.Button( fr,  text="Accumulate and mask",width=30, 
+        #     highlightbackground="black", 
+        #     command=self._accumulate_and_mask)\
+        #   .pack(side=tk.TOP, expand=tk.YES, fill=tk.X)
 
     def _accumulate_and_mask(self):
         
@@ -765,7 +855,7 @@ class Peakaboo(tk.Frame):
         mask = np.logical_and( ave_img > min_value, ave_img < max_value)
         print("Masking above %.4f and below %.4f"%(min_value, max_value)) 
         
-        self.browser.IV.set_data(ave_img, mask=mask)
+        self.browser.IV.set_data(ave_img) #, mask=mask)
         
         #self.BASE_MASK = mask
         #self._set_new_mask()
@@ -1178,14 +1268,15 @@ class Peakaboo(tk.Frame):
 
     def _doo_the_boo(self):
         #if self.found_circs:
+        
         self.browser._remove_patch_collections( label="found_circs" )
         self.found_circs = []
         
         if self.peakaboo:
             self._detect_peaks() # this sets found circs 
             self.browser._add_patches( patches=self.found_circs, label="found_circs", 
-                edgecolor='Deeppink',
-                facecolor='none')
+                        edgecolor='Deeppink',
+                        facecolor='none')
              
         #self.browser._set_xy_limits()
         if self.showing_mask:
